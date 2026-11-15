@@ -233,17 +233,18 @@ export class Astronaut {
     let delta = this.targetFacing - this.facing;
     while (delta > Math.PI) delta -= Math.PI * 2;
     while (delta < -Math.PI) delta += Math.PI * 2;
-    this.facing += delta * Math.min(1, dt * 10);
+    this.facing += delta * (1 - Math.exp(-dt * 14));
     this.group.rotation.y = this.facing;
 
-    this.antennaLight.visible = Math.sin(performance.now() * 0.004) > 0.4;
+    const now = performance.now();
+    this.antennaLight.visible = Math.sin(now * 0.004) > 0.4;
     if (this.loaded) {
       // The GLB chest panel uses an emissive PBR material; pulse its intensity
       // instead of changing the base colour.
-      const pulse = Math.sin(performance.now() * 0.002) > 0.6;
+      const pulse = Math.sin(now * 0.002) > 0.6;
       this.chestLight.material.emissiveIntensity = pulse ? 2.6 : 0.4;
     } else {
-      this.chestLight.material.color.setHex(Math.sin(performance.now() * 0.002) > 0.6 ? COLORS.teal : 0x2a6a80);
+      this.chestLight.material.color.setHex(Math.sin(now * 0.002) > 0.6 ? COLORS.teal : 0x2a6a80);
     }
   }
 }
