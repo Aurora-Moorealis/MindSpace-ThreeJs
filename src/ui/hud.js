@@ -5,6 +5,7 @@
 
 import { STRINGS } from '../data/strings.js';
 import { getSource } from '../data/sources.js';
+import { MINERALS } from '../data/minerals.js';
 import { ECONOMY, getClockLabel, formatMissionTime } from '../data/economy.js';
 import {
   clamp,
@@ -148,6 +149,7 @@ export class HUD {
                 (i) => `
               <button class="inv-slot${i === 0 ? ' active' : ''}" type="button" data-slot="${i}" title="Slot ${i + 1}">
                 <span class="inv-key">${i + 1}</span>
+                <span class="inv-count hidden" data-inv-count></span>
                 <span class="inv-icon" data-inv-icon></span>
                 <span class="inv-label" data-inv-label>EMPTY</span>
               </button>`
@@ -250,6 +252,7 @@ export class HUD {
       invCaption: this.root.querySelector('#hud-inv-caption'),
       invSlots: Array.from(this.root.querySelectorAll('.inv-slot')).map((node) => ({
         node,
+        count: node.querySelector('[data-inv-count]'),
         icon: node.querySelector('[data-inv-icon]'),
         label: node.querySelector('[data-inv-label]'),
       })),
@@ -518,28 +521,41 @@ export class HUD {
       }
     }
 
-    // Inventory bar (5 slots).
+    // Inventory bar (5 slots: starts with Pickaxe only; no pre-reserved slots).
     const selectedSlot = ctx.selectedSlot ?? this.selectedSlot ?? 0;
-    const samples = state.samples ?? [];
-    const invSignature = `${selectedSlot}|${samples.join(',')}`;
+    const hotbar = state.hotbar ?? [{ type: 'tool', id: 'pickaxe', count: 1 }, null, null, null, null];
+    const invSignature = `${selectedSlot}|${hotbar
+      .map((s) => (s ? `${s.type}:${s.id}:${s.count}` : '-'))
+      .join(',')}`;
     if (invSignature !== this.inventorySignature) {
       this.inventorySignature = invSignature;
-      const items = [
-        { icon: 'scan', label: 'SCANNER', caption: 'EVA SCANNER · Survey POIs', filled: true },
-        null,
-        null,
-        null,
-        null,
-      ];
-      samples.slice(0, 4).forEach((poiId, idx) => {
-        const code = poiId.replace('poi_', '').toUpperCase();
-        items[idx + 1] = {
-          icon: 'sample',
-          label: `SITE ${code}`,
-          caption: `SAMPLE ${code} · Deliver to Comms Console`,
-          filled: true,
-          sample: true,
-        };
+      const items = hotbar.map((entry) => {
+        if (!entry) return null;
+        if (entry.type === 'tool' && entry.id === 'pickaxe') {
+          return {
+            icon: 'pickaxe',
+            label: 'PICKAXE',
+            caption: 'LUNAR PICKAXE · Approach a mineral vein & press [E] to mine',
+            filled: true,
+            sample: false,
+            count: 0,
+            color: '',
+          };
+        }
+        if (entry.type === 'mineral') {
+          const m = MINERALS[entry.id];
+          if (!m) return null;
+          return {
+            icon: m.id === 'water_ice' ? 'water' : 'mineral',
+            label: m.short,
+            caption: `${m.name.toUpperCase()} (${m.formula}) ×${entry.count} · [F] Refine (${m.bonus.label}) · [Q] Drop`,
+            filled: true,
+            sample: true,
+            count: entry.count,
+            color: m.hex,
+          };
+        }
+        return null;
       });
       this._lastInvItems = items;
       this.refs.invSlots.forEach((slot, i) => {
@@ -549,10 +565,21 @@ export class HUD {
         slot.node.classList.toggle('sample', Boolean(item?.sample));
         if (item) {
           slot.icon.innerHTML = svgIcon(item.icon, 20);
+          slot.icon.style.color = item.color ?? '';
           slot.label.textContent = item.label;
+          if (item.count > 0) {
+            slot.count.textContent = `×${item.count}`;
+            slot.count.classList.remove('hidden');
+          } else {
+            slot.count.textContent = '';
+            slot.count.classList.add('hidden');
+          }
         } else {
           slot.icon.innerHTML = '';
+          slot.icon.style.color = '';
           slot.label.textContent = 'EMPTY';
+          slot.count.textContent = '';
+          slot.count.classList.add('hidden');
         }
       });
       const activeItem = items[selectedSlot];

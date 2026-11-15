@@ -218,7 +218,7 @@ MindSpace-ThreeJs/
 
 ```bash
 npm run audit     # valida ids, rangos, referencias y procedencia
-npm test          # 54 tests de simulación, datos y evaluación
+npm test          # 58 tests de simulación, datos y evaluación
 npm run build     # build de Vite
 npm run check     # audit + tests + build
 ```

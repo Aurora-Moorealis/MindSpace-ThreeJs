@@ -13,9 +13,13 @@ import {
   buildMissionBoard,
   buildHoloTable,
   buildPoi,
+  buildMineralVein,
+  buildNasaTruck,
+  buildIceMelter,
 } from './machines3d.js';
 import { MACHINES, MISSION_BOARD } from '../data/machines.js';
 import { POIS } from '../data/pois.js';
+import { MINERALS, MINERAL_VEINS, NASA_PROTOTYPE_TRUCK } from '../data/minerals.js';
 import { STRINGS } from '../data/strings.js';
 import { COLORS, makeCanvasTexture } from './primitives.js';
 
@@ -109,6 +113,7 @@ export class World {
     this.machineVisuals = new Map();
     this.poiVisuals = new Map();
     this.poiLabels = new Map();
+    this.veinVisuals = new Map();
     this.missionStates = new Map();
     this.currentMissionTarget = null;
     this.missionMarkerSignature = '';
@@ -126,6 +131,8 @@ export class World {
     this._buildMachines();
     this._buildStations();
     this._buildPois();
+    this._buildMineralVeins();
+    this._buildNasaTruck();
     this._buildRoomSigns();
 
     this.astronaut = new Astronaut(models?.astronaut);
@@ -192,6 +199,26 @@ export class World {
     this.group.add(holo.group);
     this.colliders.push({ minX: 3.2, maxX: 5.8, minZ: 2.3, maxZ: 4.9 });
     this.holo = holo;
+
+    // Greenhouse Ice Melter connected by liquid pipe to Hydroponics plants.
+    const iceMelter = buildIceMelter();
+    iceMelter.group.position.set(-9.2, 0, -10);
+    this.group.add(iceMelter.group);
+    this.colliders.push({ minX: -10.3, maxX: -8.1, minZ: -10.95, maxZ: -9.05 });
+    const melterLabel = new WorldLabel('ICE MELTER', { worldWidth: 3.4, height: 170, fontSize: 44 });
+    melterLabel.update('ICE MELTER', 'MELT H₂O ICE → PLANTS', '#4de2ff');
+    melterLabel.sprite.position.set(-9.2, iceMelter.labelHeight, -10);
+    this.group.add(melterLabel.sprite);
+    this.iceMelter = iceMelter;
+    this.interactables.push({
+      id: 'ice_melter',
+      type: 'station',
+      stationId: 'ice_melter',
+      position: new THREE.Vector3(-9.2, 0, -10),
+      radius: 3.1,
+      label: melterLabel,
+      visual: iceMelter,
+    });
   }
 
   _buildPois() {
@@ -214,6 +241,84 @@ export class World {
         visual,
       });
     }
+  }
+
+  _buildMineralVeins() {
+    for (const vein of MINERAL_VEINS) {
+      const mineral = MINERALS[vein.mineralId];
+      if (!mineral) continue;
+      const visual = buildMineralVein(vein, mineral);
+      visual.group.position.set(vein.position[0], -0.08, vein.position[2]);
+      this.group.add(visual.group);
+      this.veinVisuals.set(vein.id, visual);
+
+      for (const collider of visual.colliders ?? []) {
+        this.colliders.push({
+          minX: vein.position[0] + collider.x - collider.w / 2,
+          maxX: vein.position[0] + collider.x + collider.w / 2,
+          minZ: vein.position[2] + collider.z - collider.d / 2,
+          maxZ: vein.position[2] + collider.z + collider.d / 2,
+        });
+      }
+
+      const label = new WorldLabel(mineral.short, { worldWidth: 3.6, height: 170, fontSize: 44 });
+      label.update(
+        `${mineral.name.toUpperCase()} · ${mineral.formula}`,
+        `MOHS ${mineral.mohs} · ${mineral.mineSeconds.toFixed(1)}s · INFINITE`,
+        mineral.hex
+      );
+      label.sprite.position.set(vein.position[0], visual.labelHeight, vein.position[2]);
+      this.group.add(label.sprite);
+
+      this.interactables.push({
+        id: vein.id,
+        type: 'mineral',
+        veinId: vein.id,
+        mineralId: mineral.id,
+        position: new THREE.Vector3(vein.position[0], 0, vein.position[2]),
+        radius: 3.1,
+        label,
+        visual,
+      });
+    }
+  }
+
+  _buildNasaTruck() {
+    const proto = NASA_PROTOTYPE_TRUCK;
+    const visual = buildNasaTruck(proto);
+    visual.group.position.set(proto.position[0], -0.08, proto.position[2]);
+    visual.group.rotation.y = proto.rotationY ?? 0;
+    this.group.add(visual.group);
+    this.truckVisual = visual;
+
+    for (const collider of visual.colliders ?? []) {
+      const rotated = rotateLocal(collider.x, collider.z, proto.rotationY ?? 0);
+      const swap = Math.abs(Math.sin(proto.rotationY ?? 0)) > 0.5;
+      const cx = proto.position[0] + rotated.x;
+      const cz = proto.position[2] + rotated.z;
+      const w = swap ? collider.d : collider.w;
+      const d = swap ? collider.w : collider.d;
+      this.colliders.push({
+        minX: cx - w / 2,
+        maxX: cx + w / 2,
+        minZ: cz - d / 2,
+        maxZ: cz + d / 2,
+      });
+    }
+
+    const label = new WorldLabel('NASA SEV · CHARIOT', { worldWidth: 4.8, height: 180, fontSize: 44 });
+    label.update('NASA SEV · CHARIOT', '12-WHEEL LUNAR TRUCK PROTOTYPE', '#ffb347');
+    label.sprite.position.set(proto.position[0], visual.labelHeight, proto.position[2]);
+    this.group.add(label.sprite);
+
+    this.interactables.push({
+      id: proto.id,
+      type: 'prototype',
+      position: new THREE.Vector3(proto.position[0], 0, proto.position[2]),
+      radius: 4.5,
+      label,
+      visual,
+    });
   }
 
   _buildRoomSigns() {
@@ -475,7 +580,7 @@ export class World {
     return best ? { ...best, distance: bestDist } : null;
   }
 
-  describeInteraction(item) {
+  describeInteraction(item, { pickaxeEquipped = true } = {}) {
     if (!item) return null;
     if (item.type === 'machine') {
       const row = MACHINES[item.machineId];
@@ -522,6 +627,35 @@ export class World {
         disabled: scanned,
       };
     }
+    if (item.type === 'mineral') {
+      const mineral = MINERALS[item.mineralId];
+      return {
+        id: item.id,
+        name: `${mineral.name} (${mineral.formula})`,
+        action: pickaxeEquipped ? `Mine ${mineral.name}` : 'Equip Pickaxe [1]',
+        hint: `Mohs ${mineral.mohs} · ${mineral.mineSeconds.toFixed(1)} s · Infinite`,
+        key: pickaxeEquipped ? 'E' : '1',
+      };
+    }
+    if (item.type === 'prototype') {
+      return {
+        id: item.id,
+        name: NASA_PROTOTYPE_TRUCK.name,
+        action: 'Inspect NASA Prototype',
+        hint: '12-wheel Chariot / SEV data',
+        key: 'E',
+      };
+    }
+    if (item.id === 'ice_melter') {
+      const iceCount = this.sim.state.minerals?.water_ice ?? 0;
+      return {
+        id: item.id,
+        name: 'Ice Melter (Greenhouse)',
+        action: iceCount > 0 ? 'Melt Water Ice → Plants' : 'Needs Water Ice',
+        hint: iceCount > 0 ? `Carrying ×${iceCount} H₂O Ice · +12% Water, +4% Food` : 'Mine Water Ice outside first',
+        key: 'E',
+      };
+    }
     return {
       id: item.id,
       name: STRINGS['station.mission_board.name'],
@@ -564,7 +698,23 @@ export class World {
     return position;
   }
 
-  update(dt, sim, { nearest, scanProgress = 0, scanTarget = null, moving = false, sprinting = false, outside = false, time = 0, storm = 0 } = {}) {
+  update(
+    dt,
+    sim,
+    {
+      nearest,
+      scanProgress = 0,
+      scanTarget = null,
+      mineProgress = 0,
+      mineTarget = null,
+      pickaxeEquipped = true,
+      moving = false,
+      sprinting = false,
+      outside = false,
+      time = 0,
+      storm = 0,
+    } = {}
+  ) {
     this.stateAccum += dt;
     const refreshState = this.stateAccum > 0.2;
     if (refreshState) this.stateAccum = 0;
@@ -574,7 +724,8 @@ export class World {
     }
 
     this.astronaut.setGroundY(outside ? -0.06 : 0);
-    this.astronaut.update(dt, moving, sprinting ? 1.5 : 1);
+    this.astronaut.setPickaxeEquipped(pickaxeEquipped);
+    this.astronaut.update(dt, moving, sprinting ? 1.5 : 1, Boolean(mineTarget));
     this.nearestId = nearest?.id ?? null;
 
     const now = performance.now();
@@ -607,6 +758,7 @@ export class World {
     // Machine idle animations.
     for (const visual of this.machineVisuals.values()) visual.update?.(dt, sim);
     this.holo?.update?.(dt);
+    this.iceMelter?.update?.(dt, sim);
 
     // POI scan progress and flags.
     for (const poi of POIS) {
@@ -628,6 +780,18 @@ export class World {
       }
       visual.update?.(dt);
     }
+
+    // Mineral vein mining progress.
+    for (const vein of MINERAL_VEINS) {
+      const visual = this.veinVisuals.get(vein.id);
+      if (!visual) continue;
+      const progress = mineTarget === vein.id ? mineProgress : 0;
+      if (visual._lastProgress !== progress) {
+        visual._lastProgress = progress;
+        visual.setProgress(progress);
+      }
+    }
+    this.truckVisual?.update?.(dt);
 
     // Label visibility & opacity.
     const player = this.astronaut.group.position;

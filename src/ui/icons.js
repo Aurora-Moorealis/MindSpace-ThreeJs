@@ -37,6 +37,9 @@ const paths = {
   contract: '<path d="M7 3h10v18l-5-3-5 3V3Z"/><path d="M10 8h4M10 12h4"/>',
   supply: '<path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5v-7Z"/><path d="M3 8.5 12 13l9-4.5M12 13v7"/>',
   gauge: '<path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/><path d="M4 20h16"/>',
+  pickaxe: '<path d="m14.5 5.5 4 4M4.5 19.5 15 9M11 4.5c3.5.5 6.5 3.5 8.5 8.5l-2.5-2.5-3.5-3.5L11 4.5Z"/>',
+  mineral: '<path d="M12 3 4.5 8.5 7 19.5h10l2.5-11L12 3Z"/><path d="M12 3v16.5M4.5 8.5h15"/>',
+  truck: '<rect x="2.5" y="7" width="12.5" height="8" rx="1.5"/><path d="M15 9h4l2.5 3v3H15V9Z"/><circle cx="6.5" cy="17" r="2"/><circle cx="11.5" cy="17" r="2"/><circle cx="18" cy="17" r="2"/>',
 };
 
 export function icon(name, size = 18, className = '') {

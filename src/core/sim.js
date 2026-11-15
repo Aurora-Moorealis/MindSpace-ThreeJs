@@ -21,10 +21,13 @@ import { ECONOMY, getHourOfDay, isDaylight } from '../data/economy.js';
 import { EVENTS, eventIntensityAt } from '../data/events.js';
 import { MACHINES } from '../data/machines.js';
 import { POIS } from '../data/pois.js';
+import { MINERALS } from '../data/minerals.js';
 import { SUBMISSIONS } from '../data/submissions.js';
 import { EventLog, LOG_TYPES } from './event-log.js';
 
 const RESOURCE_IDS = ['o2', 'water', 'food', 'energy'];
+const HOTBAR_SIZE = 5;
+const HOTBAR_MAX_STACK = 5;
 
 const DEFAULT_STATS = () => ({
   o2_output: 1,
@@ -105,6 +108,8 @@ export class GameSim {
       samples: [],
       reports: [],
       scanLog: [],
+      minerals: { water_ice: 0, ilmenite: 0, anorthite: 0, olivine: 0 },
+      hotbar: [{ type: 'tool', id: 'pickaxe', count: 1 }, null, null, null, null],
       submissions,
       supply: { cooldown: 0, pending: null },
       firedEvents: [],
@@ -118,6 +123,7 @@ export class GameSim {
         reportsSent: 0,
         submissionsClaimed: 0,
         scans: 0,
+        mined: 0,
         stormsSurvived: 0,
         energyWasted: 0,
       },
@@ -1045,6 +1051,116 @@ export class GameSim {
     return { ok: true, dose };
   }
 
+  _recountMinerals() {
+    const counts = { water_ice: 0, ilmenite: 0, anorthite: 0, olivine: 0 };
+    for (const slot of this.state.hotbar ?? []) {
+      if (slot?.type === 'mineral' && counts[slot.id] !== undefined) {
+        counts[slot.id] += slot.count;
+      }
+    }
+    this.state.minerals = counts;
+  }
+
+  mineMineral(mineralId) {
+    const mineral = MINERALS[mineralId];
+    if (!mineral) return { ok: false, reason: 'unknown_mineral' };
+    if (!Array.isArray(this.state.hotbar)) {
+      this.state.hotbar = [{ type: 'tool', id: 'pickaxe', count: 1 }, null, null, null, null];
+    }
+    const hotbar = this.state.hotbar;
+    let targetIdx = hotbar.findIndex(
+      (slot) => slot?.type === 'mineral' && slot.id === mineralId && slot.count < HOTBAR_MAX_STACK
+    );
+    if (targetIdx === -1) {
+      targetIdx = hotbar.findIndex((slot) => slot === null);
+    }
+    if (targetIdx === -1) {
+      return { ok: false, reason: 'hotbar_full' };
+    }
+    if (hotbar[targetIdx]) {
+      hotbar[targetIdx].count += 1;
+    } else {
+      hotbar[targetIdx] = { type: 'mineral', id: mineralId, count: 1 };
+    }
+    this._recountMinerals();
+    this.state.stats.mined = (this.state.stats.mined ?? 0) + 1;
+    this.state.suit = clamp(this.state.suit - 0.35 * this.stats.suit_decay, 0, 100);
+    return {
+      ok: true,
+      slotIndex: targetIdx,
+      count: this.state.minerals[mineralId],
+      mineral,
+    };
+  }
+
+  dropHotbarSlot(slotIndex) {
+    const hotbar = this.state.hotbar;
+    if (!Array.isArray(hotbar) || slotIndex < 0 || slotIndex >= HOTBAR_SIZE) {
+      return { ok: false, reason: 'invalid_slot' };
+    }
+    const slot = hotbar[slotIndex];
+    if (!slot) return { ok: false, reason: 'empty' };
+    if (slot.type === 'tool') return { ok: false, reason: 'locked_tool' };
+    const mineral = MINERALS[slot.id] ?? null;
+    slot.count -= 1;
+    if (slot.count <= 0) hotbar[slotIndex] = null;
+    this._recountMinerals();
+    return { ok: true, droppedId: slot.id, remainingInSlot: Math.max(0, slot.count), mineral };
+  }
+
+  refineHotbarSlot(slotIndex) {
+    const hotbar = this.state.hotbar;
+    if (!Array.isArray(hotbar) || slotIndex < 0 || slotIndex >= HOTBAR_SIZE) {
+      return { ok: false, reason: 'invalid_slot' };
+    }
+    const slot = hotbar[slotIndex];
+    if (!slot || slot.type !== 'mineral') return { ok: false, reason: 'empty' };
+    const mineral = MINERALS[slot.id];
+    if (!mineral) return { ok: false, reason: 'unknown_mineral' };
+    slot.count -= 1;
+    if (slot.count <= 0) hotbar[slotIndex] = null;
+    this._recountMinerals();
+    const { resource, amount } = mineral.bonus;
+    if (resource === 'suit') {
+      this.state.suit = clamp(this.state.suit + amount, 0, 100);
+    } else if (RESOURCE_IDS.includes(resource)) {
+      this.state.resources[resource] = clamp(
+        this.state.resources[resource] + amount,
+        0,
+        this.getResourceCapacity(resource)
+      );
+    }
+    return { ok: true, remaining: this.state.minerals[mineral.id] ?? 0, mineral };
+  }
+
+  refineMineral(mineralId) {
+    const hotbar = this.state.hotbar ?? [];
+    const idx = hotbar.findIndex((slot) => slot?.type === 'mineral' && slot.id === mineralId && slot.count > 0);
+    if (idx === -1) return { ok: false, reason: 'empty' };
+    return this.refineHotbarSlot(idx);
+  }
+
+  meltIce() {
+    const hotbar = this.state.hotbar ?? [];
+    const idx = hotbar.findIndex((slot) => slot?.type === 'mineral' && slot.id === 'water_ice' && slot.count > 0);
+    if (idx === -1) return { ok: false, reason: 'no_ice' };
+    hotbar[idx].count -= 1;
+    if (hotbar[idx].count <= 0) hotbar[idx] = null;
+    this._recountMinerals();
+    this.state.resources.water = clamp(
+      this.state.resources.water + 12,
+      0,
+      this.getResourceCapacity('water')
+    );
+    this.state.resources.food = clamp(
+      this.state.resources.food + 4,
+      0,
+      this.getResourceCapacity('food')
+    );
+    this.state.iceMeltBoostUntil = this.state.tick + 2;
+    return { ok: true, remaining: this.state.minerals.water_ice ?? 0 };
+  }
+
   sendReport(poiId) {
     const poi = this.poisData.find((p) => p.id === poiId);
     if (!poi) return { ok: false, reason: 'unknown_poi' };
@@ -1211,6 +1327,8 @@ export class GameSim {
       samples: [...s.samples],
       reports: [...s.reports],
       scanLog: s.scanLog.map((x) => ({ ...x })),
+      minerals: { ...(s.minerals ?? { water_ice: 0, ilmenite: 0, anorthite: 0, olivine: 0 }) },
+      hotbar: (s.hotbar ?? []).map((slot) => (slot ? { ...slot } : null)),
       submissions: Object.fromEntries(
         Object.entries(s.submissions).map(([id, sub]) => [id, { status: sub.status, readyTick: sub.readyTick, claimedTick: sub.claimedTick }])
       ),
@@ -1253,6 +1371,11 @@ export class GameSim {
     s.samples = [...(preset.samples ?? [])];
     s.reports = [...(preset.reports ?? [])];
     s.scanLog = (preset.scanLog ?? []).map((x) => ({ ...x }));
+    s.hotbar = Array.isArray(preset.hotbar)
+      ? preset.hotbar.slice(0, HOTBAR_SIZE).map((slot) => (slot ? { ...slot } : null))
+      : [{ type: 'tool', id: 'pickaxe', count: 1 }, null, null, null, null];
+    while (s.hotbar.length < HOTBAR_SIZE) s.hotbar.push(null);
+    this._recountMinerals();
     s.firedEvents = [...(preset.firedEvents ?? [])];
     if (!s.firedEvents.length) {
       s.firedEvents = this.eventsData.filter((row) => row.onset <= s.tick).map((row) => row.id);

@@ -319,3 +319,49 @@ test('preset capture round-trips the important state', () => {
   assert.equal(restored.state.machines.battery.upgrades.includes('battery_cells'), true);
   assert.ok(restored.energyCapacity > 100);
 });
+
+test('infinite mineral veins can be mined repeatedly and refined for ISRU resources', () => {
+  const sim = new GameSim();
+  sim.state.resources.water = 50;
+  const r1 = sim.mineMineral('water_ice');
+  const r2 = sim.mineMineral('water_ice');
+  assert.equal(r1.ok, true);
+  assert.equal(r2.count, 2);
+  const refined = sim.refineMineral('water_ice');
+  assert.equal(refined.ok, true);
+  assert.equal(refined.remaining, 1);
+  assert.equal(sim.state.resources.water, 58);
+});
+
+test('hotbar starts with pickaxe only, rejects when full, and frees slot on drop', () => {
+  const sim = new GameSim();
+  assert.equal(sim.state.hotbar[0]?.id, 'pickaxe');
+  assert.deepEqual(sim.state.hotbar.slice(1), [null, null, null, null]);
+
+  for (let i = 0; i < 5; i += 1) assert.equal(sim.mineMineral('water_ice').ok, true);
+  for (let i = 0; i < 5; i += 1) assert.equal(sim.mineMineral('ilmenite').ok, true);
+  for (let i = 0; i < 5; i += 1) assert.equal(sim.mineMineral('anorthite').ok, true);
+  for (let i = 0; i < 5; i += 1) assert.equal(sim.mineMineral('olivine').ok, true);
+
+  const full = sim.mineMineral('water_ice');
+  assert.equal(full.ok, false);
+  assert.equal(full.reason, 'hotbar_full');
+  assert.equal(sim.dropHotbarSlot(0).reason, 'locked_tool');
+
+  for (let i = 0; i < 5; i += 1) assert.equal(sim.dropHotbarSlot(1).ok, true);
+  assert.equal(sim.state.hotbar[1], null);
+  assert.equal(sim.mineMineral('olivine').ok, true);
+});
+
+test('greenhouse ice melter consumes water_ice and irrigates plants', () => {
+  const sim = new GameSim();
+  sim.state.resources.water = 40;
+  sim.state.resources.food = 50;
+  assert.equal(sim.meltIce().reason, 'no_ice');
+  sim.mineMineral('water_ice');
+  const res = sim.meltIce();
+  assert.equal(res.ok, true);
+  assert.equal(res.remaining, 0);
+  assert.equal(sim.state.resources.water, 52);
+  assert.equal(sim.state.resources.food, 54);
+});
