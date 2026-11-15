@@ -6,8 +6,35 @@
 import * as THREE from 'three';
 import { COLORS, box, cylinder, glowBar, material, rounded, sphere } from './primitives.js';
 
+function addContactShadow(group) {
+  const shadowCanvas = document.createElement('canvas');
+  shadowCanvas.width = 128;
+  shadowCanvas.height = 128;
+  const ctx = shadowCanvas.getContext('2d');
+  const grad = ctx.createRadialGradient(64, 64, 4, 64, 64, 60);
+  grad.addColorStop(0, 'rgba(0,0,0,0.45)');
+  grad.addColorStop(0.6, 'rgba(0,0,0,0.2)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  const shadowTex = new THREE.CanvasTexture(shadowCanvas);
+  const shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.4, 1.4),
+    new THREE.MeshBasicMaterial({
+      map: shadowTex,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+    })
+  );
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.02;
+  shadow.renderOrder = 1;
+  group.add(shadow);
+}
+
 export class Astronaut {
-  constructor() {
+  constructor(template = null) {
     this.group = new THREE.Group();
     this.walkPhase = 0;
     this.moving = false;
@@ -15,6 +42,25 @@ export class Astronaut {
     this.targetFacing = 0;
     this.speedMultiplier = 1;
     this.groundY = 0;
+
+    if (template) {
+      // Authored GLB with named rigid pivots. Clone it so a future second
+      // astronaut instance would not share transforms.
+      this.group.add(template.clone(true));
+      this.loaded = true;
+      this.torso = this.group.getObjectByName('Torso');
+      this.armL = this.group.getObjectByName('ArmL');
+      this.armR = this.group.getObjectByName('ArmR');
+      this.legL = this.group.getObjectByName('LegL');
+      this.legR = this.group.getObjectByName('LegR');
+      this.chestLight = this.group.getObjectByName('ChestLight');
+      this.antennaLight = this.group.getObjectByName('AntennaLight');
+      addContactShadow(this.group);
+      this.group.position.set(0, 0, 2.5);
+      return;
+    }
+
+    this.loaded = false;
 
     const suit = material(0xe7ebef, { roughness: 0.62, metalness: 0.05 });
     const suitShade = material(0xc7ccd2, { roughness: 0.7, metalness: 0.05 });
@@ -149,31 +195,7 @@ export class Astronaut {
     this.legL = makeLeg(-1);
     this.legR = makeLeg(1);
 
-    // Soft contact shadow.
-    const shadowCanvas = document.createElement('canvas');
-    shadowCanvas.width = 128;
-    shadowCanvas.height = 128;
-    const ctx = shadowCanvas.getContext('2d');
-    const grad = ctx.createRadialGradient(64, 64, 4, 64, 64, 60);
-    grad.addColorStop(0, 'rgba(0,0,0,0.45)');
-    grad.addColorStop(0.6, 'rgba(0,0,0,0.2)');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 128, 128);
-    const shadowTex = new THREE.CanvasTexture(shadowCanvas);
-    const shadow = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.4, 1.4),
-      new THREE.MeshBasicMaterial({
-        map: shadowTex,
-        transparent: true,
-        depthWrite: false,
-        toneMapped: false,
-      })
-    );
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.02;
-    shadow.renderOrder = 1;
-    this.group.add(shadow);
+    addContactShadow(this.group);
 
     this.group.position.set(0, 0, 2.5);
   }
@@ -215,6 +237,13 @@ export class Astronaut {
     this.group.rotation.y = this.facing;
 
     this.antennaLight.visible = Math.sin(performance.now() * 0.004) > 0.4;
-    this.chestLight.material.color.setHex(Math.sin(performance.now() * 0.002) > 0.6 ? COLORS.teal : 0x2a6a80);
+    if (this.loaded) {
+      // The GLB chest panel uses an emissive PBR material; pulse its intensity
+      // instead of changing the base colour.
+      const pulse = Math.sin(performance.now() * 0.002) > 0.6;
+      this.chestLight.material.emissiveIntensity = pulse ? 2.6 : 0.4;
+    } else {
+      this.chestLight.material.color.setHex(Math.sin(performance.now() * 0.002) > 0.6 ? COLORS.teal : 0x2a6a80);
+    }
   }
 }

@@ -18,6 +18,7 @@ import './ui/styles.css';
 import * as THREE from 'three';
 import { Stage } from './world/scene.js';
 import { World } from './world/world.js';
+import { loadWorldModels } from './world/models.js';
 import { ROOMS } from './world/base.js';
 import { GameSim } from './core/sim.js';
 import { AudioManager } from './core/audio.js';
@@ -153,7 +154,15 @@ async function boot() {
     stormOverlay.className = 'storm-vignette';
     appEl.append(stormOverlay);
 
-    world = new World(stage.scene, sim);
+    const loadingDetail = loading.querySelector('.loading-detail');
+    const models = await Promise.race([
+      loadWorldModels((done, total) => {
+        if (loadingDetail) loadingDetail.textContent = `LOADING 3D ASSETS · ${done} / ${total}`;
+      }),
+      wait(6000).then(() => null),
+    ]);
+
+    world = new World(stage.scene, sim, models);
     for (const light of world.base.lights ?? []) stage.registerInteriorLight(light);
     world.astronaut.setPosition(app.player.x, app.player.z);
 

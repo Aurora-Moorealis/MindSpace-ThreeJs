@@ -98,9 +98,10 @@ function rotateLocal(x, z, rotation) {
 }
 
 export class World {
-  constructor(scene, sim) {
+  constructor(scene, sim, models = null) {
     this.scene = scene;
     this.sim = sim;
+    this.models = models;
     this.group = new THREE.Group();
     this.scene.add(this.group);
     this.colliders = [];
@@ -115,7 +116,7 @@ export class World {
     this.group.add(this.base.group);
     this.colliders.push(...this.base.colliders);
 
-    this.exterior = buildExterior();
+    this.exterior = buildExterior(models);
     this.group.add(this.exterior.group);
     this.colliders.push(...this.exterior.colliders);
 
@@ -124,7 +125,7 @@ export class World {
     this._buildPois();
     this._buildRoomSigns();
 
-    this.astronaut = new Astronaut();
+    this.astronaut = new Astronaut(models?.astronaut);
     this.group.add(this.astronaut.group);
 
     this._buildHighlight();
