@@ -1,0 +1,559 @@
+/**
+ * World orchestrator: builds the outpost and the lunar exterior, mounts all
+ * data-driven machines and POIs, owns collision resolution, floating labels,
+ * the objective beacon and the astronaut.
+ */
+
+import * as THREE from 'three';
+import { buildBase, getRoomAt } from './base.js';
+import { buildExterior } from './exterior.js';
+import { Astronaut } from './astronaut.js';
+import {
+  buildMachine,
+  buildMissionBoard,
+  buildHoloTable,
+  buildPoi,
+} from './machines3d.js';
+import { MACHINES, MISSION_BOARD } from '../data/machines.js';
+import { POIS } from '../data/pois.js';
+import { STRINGS } from '../data/strings.js';
+import { COLORS } from './primitives.js';
+
+const STATUS_COLORS = {
+  online: '#6ee7a8',
+  standby: '#ffb347',
+  repairing: '#ffb347',
+  broken: '#ff5a6a',
+  off: '#7f8da3',
+  night: '#6e8fb8',
+  starved: '#ff9f43',
+};
+
+class WorldLabel {
+  constructor(text, { worldWidth = 3.0, height = 190, fontSize = 38 } = {}) {
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = 640;
+    this.canvas.height = height;
+    this.ctx = this.canvas.getContext('2d');
+    this.texture = new THREE.CanvasTexture(this.canvas);
+    this.texture.colorSpace = THREE.SRGBColorSpace;
+    this.texture.anisotropy = 4;
+    this.material = new THREE.SpriteMaterial({
+      map: this.texture,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+    });
+    this.sprite = new THREE.Sprite(this.material);
+    this.sprite.scale.set(worldWidth, worldWidth * (height / 640), 1);
+    this.sprite.center.set(0.5, 0);
+    this.sprite.renderOrder = 25;
+    this.worldWidth = worldWidth;
+    this.fontSize = fontSize;
+    this.lastTitle = '';
+    this.lastSub = '';
+    this.lastAccent = '';
+    this.draw(text, '', '#4de2ff');
+  }
+
+  draw(title, subtitle, accent = '#4de2ff', detail = null) {
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(5, 11, 20, 0.88)';
+    ctx.beginPath();
+    ctx.roundRect(6, 6, w - 12, h - 12, 18);
+    ctx.fill();
+    ctx.strokeStyle = `${accent}cc`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.fillRect(6, 6, 12, h - 12);
+    ctx.fillStyle = '#eef5ff';
+    ctx.font = `700 ${this.fontSize}px "Rajdhani", "Segoe UI", sans-serif`;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(title, 38, subtitle ? 57 : h / 2, w - 60);
+    if (subtitle) {
+      ctx.fillStyle = '#9db4cc';
+      ctx.font = '600 25px "Rajdhani", "Segoe UI", sans-serif';
+      ctx.fillText(subtitle, 38, 104, w - 60);
+    }
+    if (detail) {
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fillRect(38, h - 44, w - 76, 10);
+      ctx.fillStyle = accent;
+      ctx.fillRect(38, h - 44, (w - 76) * Math.max(0, Math.min(1, detail.value)), 10);
+      if (detail.label) {
+        ctx.fillStyle = '#8fa8c2';
+        ctx.font = '600 20px "Rajdhani", sans-serif';
+        ctx.fillText(detail.label, 38, h - 62, w - 60);
+      }
+    }
+    this.texture.needsUpdate = true;
+  }
+
+  update(title, subtitle, accent, detail = null) {
+    const key = `${title}|${subtitle}|${accent}|${detail?.value?.toFixed?.(2) ?? ''}`;
+    if (key === this.lastKey) return;
+    this.lastKey = key;
+    this.draw(title, subtitle, accent, detail);
+  }
+}
+
+function rotateLocal(x, z, rotation) {
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  return { x: x * cos + z * sin, z: -x * sin + z * cos };
+}
+
+export class World {
+  constructor(scene, sim) {
+    this.scene = scene;
+    this.sim = sim;
+    this.group = new THREE.Group();
+    this.scene.add(this.group);
+    this.colliders = [];
+    this.interactables = [];
+    this.machineVisuals = new Map();
+    this.machineLabels = new Map();
+    this.poiVisuals = new Map();
+    this.poiLabels = new Map();
+    this.stateAccum = 0;
+    this.nearestId = null;
+
+    this.base = buildBase();
+    this.group.add(this.base.group);
+    this.colliders.push(...this.base.colliders);
+
+    this.exterior = buildExterior();
+    this.group.add(this.exterior.group);
+    this.colliders.push(...this.exterior.colliders);
+
+    this._buildMachines();
+    this._buildStations();
+    this._buildPois();
+
+    this.astronaut = new Astronaut();
+    this.group.add(this.astronaut.group);
+
+    this._buildHighlight();
+    this._buildObjectiveMarker();
+
+    this.bounds = { minX: -46, maxX: 46, minZ: -15.1, maxZ: 61.5 };
+  }
+
+  _buildMachines() {
+    for (const row of Object.values(MACHINES)) {
+      const visual = buildMachine(row.id);
+      const isExterior = row.roomKey === 'room.exterior';
+      visual.group.position.set(row.position[0], isExterior ? -0.08 : 0, row.position[2]);
+      visual.group.rotation.y = row.rotationY ?? 0;
+      this.group.add(visual.group);
+      this.machineVisuals.set(row.id, visual);
+
+      for (const collider of visual.colliders ?? []) {
+        const rotated = rotateLocal(collider.x, collider.z, row.rotationY ?? 0);
+        const swap = Math.abs(Math.sin(row.rotationY ?? 0)) > 0.5;
+        const cx = row.position[0] + rotated.x;
+        const cz = row.position[2] + rotated.z;
+        const w = swap ? collider.d : collider.w;
+        const d = swap ? collider.w : collider.d;
+        this.colliders.push({
+          minX: cx - w / 2,
+          maxX: cx + w / 2,
+          minZ: cz - d / 2,
+          maxZ: cz + d / 2,
+        });
+      }
+
+      const label = new WorldLabel(STRINGS[row.nameKey] ?? row.id);
+      label.sprite.position.set(
+        row.position[0],
+        (isExterior ? -0.08 : 0) + visual.labelHeight + 0.2,
+        row.position[2]
+      );
+      this.group.add(label.sprite);
+      this.machineLabels.set(row.id, label);
+
+      this.interactables.push({
+        id: row.id,
+        type: 'machine',
+        machineId: row.id,
+        position: new THREE.Vector3(row.position[0], isExterior ? -0.08 : 0, row.position[2]),
+        radius: row.id === 'solar_array' ? 4.6 : row.id === 'storm_shelter' ? 3.6 : 2.9,
+        label,
+        visual,
+      });
+    }
+  }
+
+  _buildStations() {
+    const board = buildMissionBoard();
+    board.group.position.set(MISSION_BOARD.position[0], 0, MISSION_BOARD.position[2]);
+    board.group.rotation.y = MISSION_BOARD.rotationY ?? 0;
+    this.group.add(board.group);
+    this.colliders.push({ minX: -5.9, maxX: -3.1, minZ: 3.95, maxZ: 5.05 });
+    const boardLabel = new WorldLabel(STRINGS['station.mission_board.name']);
+    boardLabel.sprite.position.set(MISSION_BOARD.position[0], board.labelHeight + 0.3, MISSION_BOARD.position[2]);
+    this.group.add(boardLabel.sprite);
+    this.boardLabel = boardLabel;
+    this.interactables.push({
+      id: 'mission_board',
+      type: 'station',
+      stationId: 'mission_board',
+      position: new THREE.Vector3(MISSION_BOARD.position[0], 0, MISSION_BOARD.position[2]),
+      radius: 2.6,
+      label: boardLabel,
+      visual: board,
+    });
+
+    const holo = buildHoloTable();
+    holo.group.position.set(4.5, 0, 3.6);
+    this.group.add(holo.group);
+    this.colliders.push({ minX: 3.2, maxX: 5.8, minZ: 2.3, maxZ: 4.9 });
+    this.holo = holo;
+  }
+
+  _buildPois() {
+    for (const poi of POIS) {
+      const visual = buildPoi(poi);
+      visual.group.position.set(poi.position[0], -0.08, poi.position[2]);
+      this.group.add(visual.group);
+      this.poiVisuals.set(poi.id, visual);
+      const label = new WorldLabel(`SITE ${poi.code}`, { worldWidth: 3.4 });
+      label.sprite.position.set(poi.position[0], visual.labelHeight, poi.position[2]);
+      this.group.add(label.sprite);
+      this.poiLabels.set(poi.id, label);
+      this.interactables.push({
+        id: poi.id,
+        type: 'poi',
+        poiId: poi.id,
+        position: new THREE.Vector3(poi.position[0], 0, poi.position[2]),
+        radius: 3.4,
+        label,
+        visual,
+      });
+    }
+  }
+
+  _buildHighlight() {
+    const geo = new THREE.RingGeometry(1.25, 1.48, 48);
+    const mat = new THREE.MeshBasicMaterial({
+      color: COLORS.teal,
+      transparent: true,
+      opacity: 0.7,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    this.highlight = new THREE.Mesh(geo, mat);
+    this.highlight.rotation.x = -Math.PI / 2;
+    this.highlight.position.y = 0.14;
+    this.highlight.visible = false;
+    this.highlight.renderOrder = 3;
+    this.group.add(this.highlight);
+  }
+
+  _buildObjectiveMarker() {
+    const group = new THREE.Group();
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.35, 5.5, 12, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: COLORS.teal,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      })
+    );
+    beam.position.y = 2.75;
+    group.add(beam);
+    const diamond = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.28, 0),
+      new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false })
+    );
+    diamond.position.y = 5.6;
+    group.add(diamond);
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.5, 0.035, 6, 28),
+      new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false, transparent: true, opacity: 0.8 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 5.2;
+    group.add(ring);
+    group.visible = false;
+    this.objective = { group, beam, diamond, ring };
+    this.group.add(group);
+  }
+
+  setObjective(targetId) {
+    if (!targetId) {
+      this.objective.group.visible = false;
+      this.objectiveTarget = null;
+      return;
+    }
+    const interactable = this.interactables.find((item) => item.id === targetId);
+    if (!interactable) {
+      this.objective.group.visible = false;
+      return;
+    }
+    this.objectiveTarget = targetId;
+    this.objective.group.visible = true;
+    this.objective.group.position.set(interactable.position.x, 0, interactable.position.z);
+  }
+
+  getRoomAt(x, z) {
+    return getRoomAt(x, z);
+  }
+
+  getInteractable(id) {
+    return this.interactables.find((item) => item.id === id) ?? null;
+  }
+
+  getPoi(id) {
+    return POIS.find((poi) => poi.id === id) ?? null;
+  }
+
+  getMachineWorldPosition(id) {
+    const row = MACHINES[id];
+    if (!row) return null;
+    return new THREE.Vector3(row.position[0], 0, row.position[2]);
+  }
+
+  getNearestInteractable(position, maxDistance = 3.6) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const item of this.interactables) {
+      const dx = position.x - item.position.x;
+      const dz = position.z - item.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist <= Math.max(maxDistance, item.radius) && dist < bestDist) {
+        best = item;
+        bestDist = dist;
+      }
+    }
+    return best ? { ...best, distance: bestDist } : null;
+  }
+
+  describeInteraction(item) {
+    if (!item) return null;
+    if (item.type === 'machine') {
+      const row = MACHINES[item.machineId];
+      const name = STRINGS[row.nameKey] ?? item.machineId;
+      if (item.machineId === 'solar_array') {
+        const dust = this.sim.state.dust;
+        return {
+          id: item.id,
+          name,
+          action: dust > 2 ? 'Clean panels' : 'Inspect array',
+          hint: `${Math.round(dust)}% dust`,
+          key: 'E',
+        };
+      }
+      if (item.machineId === 'comms_console') {
+        return {
+          id: item.id,
+          name,
+          action: 'Open comms',
+          hint: 'Reports · contracts · forecast',
+          key: 'E',
+        };
+      }
+      if (item.machineId === 'storm_shelter') {
+        return {
+          id: item.id,
+          name,
+          action: this.sim.state.shelterLocked ? 'Unlock shelter' : 'Lock shelter',
+          hint: this.sim.state.shelterLocked ? 'Sealed' : 'Open',
+          key: 'E',
+        };
+      }
+      return { id: item.id, name, action: 'Inspect', hint: '', key: 'E' };
+    }
+    if (item.type === 'poi') {
+      const poi = this.getPoi(item.poiId);
+      const scanned = this.sim.state.scans.includes(item.poiId);
+      return {
+        id: item.id,
+        name: `${STRINGS[poi.nameKey]}`,
+        action: scanned ? 'Site sampled' : 'Scan site',
+        hint: scanned ? 'Sample collected' : 'Stay still for 3 s',
+        key: scanned ? '—' : 'E',
+        disabled: scanned,
+      };
+    }
+    return {
+      id: item.id,
+      name: STRINGS['station.mission_board.name'],
+      action: 'Open',
+      hint: '',
+      key: 'E',
+    };
+  }
+
+  isBlocked(x, z, radius) {
+    for (const collider of this.colliders) {
+      if (
+        x + radius > collider.minX &&
+        x - radius < collider.maxX &&
+        z + radius > collider.minZ &&
+        z - radius < collider.maxZ
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  move(position, dx, dz, radius = 0.55) {
+    let nx = position.x + dx;
+    if (!this.isBlocked(nx, position.z, radius)) position.x = nx;
+    let nz = position.z + dz;
+    if (!this.isBlocked(position.x, nz, radius)) position.z = nz;
+
+    position.x = Math.max(this.bounds.minX, Math.min(this.bounds.maxX, position.x));
+    position.z = Math.max(this.bounds.minZ, Math.min(this.bounds.maxZ, position.z));
+
+    // Keep the astronaut from walking around the outside of the outpost.
+    if (position.z > 16.2) {
+      const inAirlockExit = Math.abs(position.x) <= 2.2 && position.z < 18.4;
+      if (!inAirlockExit) position.z = Math.max(17.1, position.z);
+    } else if (position.z > 15.4 && Math.abs(position.x) > 2.2) {
+      position.z = Math.min(15.4, position.z);
+    }
+    return position;
+  }
+
+  update(dt, sim, { nearest, scanProgress = 0, scanTarget = null, moving = false, outside = false, time = 0, storm = 0 } = {}) {
+    this.stateAccum += dt;
+    const refreshState = this.stateAccum > 0.2;
+    if (refreshState) this.stateAccum = 0;
+
+    for (const door of this.base.doors) {
+      door.update(this.astronaut.group.position.x, this.astronaut.group.position.z, dt);
+    }
+
+    this.astronaut.setGroundY(outside ? -0.06 : 0);
+    this.astronaut.update(dt, moving);
+    this.nearestId = nearest?.id ?? null;
+
+    // Highlight ring.
+    if (nearest && nearest.type !== 'poi') {
+      this.highlight.visible = true;
+      this.highlight.position.set(nearest.position.x, nearest.position.y + 0.14, nearest.position.z);
+      const pulse = 1 + Math.sin(performance.now() * 0.004) * 0.06;
+      this.highlight.scale.setScalar(pulse);
+      this.highlight.material.opacity = 0.45 + Math.sin(performance.now() * 0.004) * 0.15;
+    } else {
+      this.highlight.visible = false;
+    }
+
+    // Machine state + labels.
+    if (refreshState) {
+      for (const [id, visual] of this.machineVisuals) {
+        const view = sim.machineView(id);
+        if (!view) continue;
+        visual.setState?.(view, sim);
+        const label = this.machineLabels.get(id);
+        if (label) {
+          let status = view.status;
+          let subtitle = '';
+          if (id === 'solar_array') {
+            subtitle = `${Math.round(sim.state.dust)}% dust · ${view.outputs?.energy?.toFixed(1) ?? '0'} kW`;
+          } else if (id === 'storm_shelter') {
+            subtitle = sim.state.shelterLocked ? 'SEALED' : 'OPEN';
+          } else if (id === 'battery') {
+            subtitle = `${Math.round(sim.state.resources.energy)} / ${sim.energyCapacity} kWh`;
+          } else if (view.job) {
+            subtitle = `${view.job.type === 'upgrade' ? 'UPGRADE' : 'REPAIR'} · ${Math.max(1, view.job.remainingTicks)} h left`;
+          } else if (view.kind === 'production' || view.kind === 'solar') {
+            subtitle = `${view.status.toUpperCase()} · ${Math.round(view.condition)}%`;
+          } else {
+            subtitle = 'ONLINE';
+          }
+          const accent = STATUS_COLORS[status] ?? '#4de2ff';
+          label.update(
+            STRINGS[view.nameKey] ?? id,
+            subtitle,
+            accent,
+            view.kind === 'production' || view.kind === 'solar'
+              ? { value: view.condition / 100, label: `CONDITION ${Math.round(view.condition)}%` }
+              : null
+          );
+        }
+      }
+      this.boardLabel?.update(STRINGS['station.mission_board.name'], 'Mission · contracts · clock', '#4de2ff');
+
+      // POI labels.
+      for (const poi of POIS) {
+        const label = this.poiLabels.get(poi.id);
+        if (!label) continue;
+        const scanned = sim.state.scans.includes(poi.id);
+        const reported = sim.state.reports.includes(poi.id);
+        const sample = sim.state.samples.includes(poi.id);
+        let status = scanned ? 'SAMPLE READY' : 'UNSCANNED';
+        let accent = '#4de2ff';
+        if (sample) {
+          status = 'SAMPLE READY · TAKE TO COMMS';
+          accent = '#ffb347';
+        }
+        if (reported) {
+          status = 'REPORT SENT';
+          accent = '#6ee7a8';
+        }
+        label.update(`SITE ${poi.code} · ${STRINGS[poi.nameKey]}`, status, accent);
+      }
+    }
+
+    // Machine idle animations.
+    for (const visual of this.machineVisuals.values()) visual.update?.(dt, sim);
+    this.holo?.update?.(dt);
+
+    // POI scan progress and flags.
+    for (const poi of POIS) {
+      const visual = this.poiVisuals.get(poi.id);
+      if (!visual) continue;
+      const scanned = sim.state.scans.includes(poi.id);
+      const progress = scanTarget === poi.id ? scanProgress : scanned ? 1 : 0;
+      visual.setProgress(progress, scanned);
+      visual.update?.(dt);
+    }
+
+    // Label visibility & opacity.
+    const player = this.astronaut.group.position;
+    for (const item of this.interactables) {
+      const label = item.label;
+      if (!label) continue;
+      const dist = Math.hypot(player.x - item.position.x, player.z - item.position.z);
+      const maxDist = item.type === 'poi' ? 42 : 12.5;
+      label.sprite.visible = dist < maxDist;
+      label.material.opacity = Math.min(1, Math.max(0.12, 1.25 - dist / maxDist));
+      const wantDepth = this.nearestId !== item.id && item.type !== 'poi';
+      if (label.material.depthTest !== wantDepth) label.material.depthTest = wantDepth;
+      if (this.nearestId === item.id) {
+        label.sprite.renderOrder = 30;
+        label.material.opacity = 1;
+      }
+    }
+
+    // Objective beacon.
+    if (this.objective.group.visible) {
+      const t = performance.now() * 0.001;
+      this.objective.diamond.rotation.y += dt * 1.2;
+      this.objective.diamond.position.y = 5.6 + Math.sin(t * 2.2) * 0.15;
+      this.objective.ring.rotation.z += dt * 0.8;
+      this.objective.beam.material.opacity = 0.09 + Math.sin(t * 1.4) * 0.03;
+    }
+
+    this.exterior.update(dt, storm);
+  }
+
+  /** Called when a scan begins/ends so the ring starts at zero cleanly. */
+  resetScan() {}
+
+  getSpawn() {
+    return { x: 0, z: 2.5 };
+  }
+}

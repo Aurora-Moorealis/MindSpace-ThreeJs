@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#05080f" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta
+      name="description"
+      content="Outpost Lunar — a Junior Astronaut Mission Trainer built with Three.js. Keep a lunar outpost alive, manage oxygen, water, food and power, and finish the science mission."
+    />
+    <title>Outpost Lunar — Junior Astronaut Mission Trainer</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+      <div id="fade"></div>
+      <div id="hud" class="hidden" aria-live="polite"></div>
+      <div id="banner-layer"></div>
+      <div id="toast-layer"></div>
+      <div id="overlay-layer"></div>
+      <div id="debug" class="hidden"></div>
+    </div>
+    <noscript>This mission requires JavaScript.</noscript>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

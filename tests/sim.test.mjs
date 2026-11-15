@@ -1,0 +1,245 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import { GameSim } from '../src/core/sim.js';
+import { LOG_TYPES } from '../src/core/event-log.js';
+import { DEMO_PRESETS, validatePreset } from '../src/data/demo-states.js';
+import { EVENTS } from '../src/data/events.js';
+import { ECONOMY } from '../src/data/economy.js';
+
+const settle = (sim, ticks, presence = { outside: false, inShelter: false }) => {
+  sim.setPresence(presence);
+  for (let i = 0; i < ticks; i += 1) {
+    sim.tick();
+    sim.drainNotifications();
+    if (sim.state.over) break;
+  }
+};
+
+test('tick 0 starts with the designed stock and no victory', () => {
+  const sim = new GameSim();
+  assert.equal(sim.state.tick, 0);
+  assert.equal(sim.state.resources.o2, ECONOMY.resources.o2.start);
+  assert.equal(sim.state.health, 100);
+  assert.equal(sim.state.over, null);
+  assert.equal(sim.getDoseRate(), 0);
+});
+
+test('simulation is deterministic for identical action sequences', () => {
+  const a = new GameSim();
+  const b = new GameSim();
+  for (const sim of [a, b]) {
+    sim.setPresence({ outside: false, inShelter: false });
+    for (let i = 0; i < 40; i += 1) {
+      sim.tick();
+      sim.drainNotifications();
+    }
+  }
+  assert.deepEqual(a.snapshot(), b.snapshot());
+});
+
+test('resources never exceed capacity and never go negative', () => {
+  const sim = new GameSim();
+  settle(sim, 120);
+  for (const id of ['o2', 'water', 'food', 'energy']) {
+    assert.ok(sim.state.resources[id] >= 0, `${id} below zero`);
+    assert.ok(sim.state.resources[id] <= sim.getResourceCapacity(id) + 1e-9, `${id} above capacity`);
+  }
+});
+
+test('radiation accumulates outside and is lower inside the locked shelter', () => {
+  const outside = new GameSim();
+  outside.state.tick = 5;
+  outside.setPresence({ outside: true, inShelter: false });
+  outside.tick();
+  const outsideGain = outside.state.radiation - ECONOMY.radiation.start;
+  assert.ok(outsideGain > 0, 'outside radiation should be positive at storm onset');
+
+  const inside = new GameSim();
+  inside.state.tick = 5;
+  inside.setPresence({ outside: false, inShelter: false });
+  inside.tick();
+  const insideGain = inside.state.radiation - ECONOMY.radiation.start;
+
+  const sheltered = new GameSim();
+  sheltered.state.tick = 5;
+  sheltered.state.shelterLocked = true;
+  sheltered.setPresence({ outside: false, inShelter: true });
+  sheltered.tick();
+  const shelterGain = sheltered.state.radiation - ECONOMY.radiation.start;
+
+  assert.ok(outsideGain > insideGain, 'outside should be worse than inside');
+  assert.ok(insideGain > shelterGain, 'the shelter should reduce dose');
+});
+
+test('radiation never decays', () => {
+  const sim = new GameSim();
+  sim.state.radiation = 42;
+  settle(sim, 10);
+  assert.ok(sim.state.radiation >= 42);
+});
+
+test('storm window is scheduled early and is real-data sourced', () => {
+  const storm = EVENTS.find((e) => e.archetype === 'radiation_window');
+  assert.ok(storm.onset <= 12);
+  assert.ok(storm.intensity.peak > storm.intensity.start);
+});
+
+test('broken machine can be repaired over game hours', () => {
+  const sim = new GameSim();
+  sim.state.machines.hydroponics.condition = 0;
+  sim.state.resources.energy = 50;
+  const start = sim.startRepair('hydroponics');
+  assert.equal(start.ok, true);
+  assert.ok(sim.state.machines.hydroponics.job);
+  settle(sim, ECONOMY.repair.ticks + ECONOMY.repair.ticks);
+  assert.ok(sim.state.machines.hydroponics.condition > 0);
+  assert.equal(sim.state.machines.hydroponics.job, null);
+  assert.ok(sim.log.count(LOG_TYPES.REPAIR) >= 1);
+});
+
+test('battery upgrade increases usable capacity', () => {
+  const sim = new GameSim();
+  sim.state.resources.energy = 100;
+  const before = sim.energyCapacity;
+  const result = sim.startUpgrade('battery', 'battery_cells');
+  assert.equal(result.ok, true);
+  settle(sim, 8);
+  assert.equal(sim.state.machines.battery.upgrades.includes('battery_cells'), true);
+  assert.ok(sim.energyCapacity >= before + 40);
+});
+
+test('three scans and three reports complete the mission', () => {
+  const sim = new GameSim();
+  sim.setPresence({ outside: true, inShelter: false });
+  for (const id of ['site_a', 'site_b', 'site_c']) {
+    const scan = sim.completeScan(id);
+    assert.equal(scan.ok, true);
+  }
+  sim.setPresence({ outside: false, inShelter: false });
+  for (const id of ['site_a', 'site_b', 'site_c']) {
+    const report = sim.sendReport(id);
+    assert.equal(report.ok, true);
+  }
+  assert.equal(sim.state.over, 'victory');
+  assert.equal(sim.state.cause, 'mission_complete');
+  assert.equal(sim.state.reports.length, 3);
+  assert.equal(sim.log.count(LOG_TYPES.REPORT), 3);
+  // Science Delivery is auto-claimed with the victory beat.
+  assert.equal(sim.state.submissions.science_delivery.status, 'claimed');
+});
+
+test('a sample cannot be reported twice or without a scan', () => {
+  const sim = new GameSim();
+  assert.equal(sim.sendReport('site_a').ok, false);
+  sim.setPresence({ outside: true, inShelter: false });
+  sim.completeScan('site_a');
+  assert.equal(sim.sendReport('site_a').ok, true);
+  assert.equal(sim.sendReport('site_a').ok, false);
+});
+
+test('doing nothing eventually kills the crew', () => {
+  const sim = new GameSim();
+  settle(sim, ECONOMY.time.missionTicks + 2);
+  assert.equal(sim.state.over, 'defeat');
+  assert.ok(['oxygen', 'radiation', 'starvation', 'dehydration', 'mission_clock', 'life_support'].includes(sim.state.cause));
+});
+
+test('mission clock ends a run with partial reports', () => {
+  const sim = new GameSim();
+  sim.state.tick = ECONOMY.time.missionTicks - 1;
+  sim.state.health = 100;
+  sim.state.radiation = 2;
+  sim.state.resources.o2 = 100;
+  sim.state.resources.water = 100;
+  sim.state.resources.food = 100;
+  sim.state.resources.energy = 100;
+  sim.state.emergencyO2 = 6;
+  sim.state.nutrition = 100;
+  sim.state.hydration = 100;
+  sim.tick();
+  assert.equal(sim.state.over, 'defeat');
+  assert.equal(sim.state.cause, 'mission_clock');
+});
+
+test('power ladder sheds lights before life support', () => {
+  const sim = new GameSim();
+  sim.state.tick = 18; // night
+  sim.state.resources.energy = 0;
+  sim.tick();
+  assert.ok(sim.state.lastPower.shed.length > 0);
+  assert.equal(sim.state.lastPower.shed[0], 'lights');
+  const o2Shed = sim.state.lastPower.shed.indexOf('o2_system');
+  const hydroShed = sim.state.lastPower.shed.indexOf('hydroponics');
+  if (o2Shed !== -1) assert.ok(hydroShed !== -1 && hydroShed < o2Shed);
+});
+
+test('comms outage blocks forecast but not reports', () => {
+  const sim = new GameSim();
+  sim.state.tick = 95;
+  sim.tick();
+  assert.equal(sim.isCommsOutage(), true);
+  assert.deepEqual(sim.getForecast(), []);
+  sim.setPresence({ outside: true, inShelter: false });
+  for (const id of ['site_a', 'site_b', 'site_c']) sim.completeScan(id);
+  assert.equal(sim.sendReport('site_a').ok, true);
+});
+
+test('supply request costs power and arrives after the delay', () => {
+  const sim = new GameSim();
+  sim.state.tick = 30;
+  sim.state.resources.energy = 50;
+  const before = sim.state.resources.water;
+  assert.equal(sim.requestSupply().ok, true);
+  settle(sim, ECONOMY.supply.delayTicks);
+  assert.ok(sim.state.resources.water > before);
+  assert.equal(sim.log.count(LOG_TYPES.SUPPLY_ARRIVAL), 1);
+});
+
+test('storm watch contract completes from a reading before the event', () => {
+  const sim = new GameSim();
+  sim.state.tick = 10;
+  sim.setPresence({ outside: true, inShelter: false });
+  sim.completeScan('site_a');
+  assert.equal(sim.state.submissions.storm_watch.status, 'ready');
+  const claimed = sim.claimSubmission('storm_watch');
+  assert.equal(claimed.ok, true);
+  assert.equal(sim.state.submissions.storm_watch.status, 'claimed');
+});
+
+test('water watch contract needs a repair and low reservoir', () => {
+  const sim = new GameSim();
+  sim.state.tick = 20;
+  sim.state.resources.water = 40;
+  sim.state.machines.water_recycler.condition = 100;
+  sim.state.machines.water_recycler.repairCount = 1;
+  sim.tick();
+  assert.equal(sim.state.submissions.water_watch.status, 'ready');
+});
+
+test('demo presets pass validation and survive their first hours', () => {
+  for (const preset of DEMO_PRESETS) {
+    const result = validatePreset(preset);
+    assert.equal(result.ok, true, `${preset.id}: ${result.errors.join('; ')}`);
+    const sim = new GameSim();
+    sim.loadPreset(preset);
+    sim.setPresence({ outside: false, inShelter: false });
+    for (let i = 0; i < 4; i += 1) sim.tick();
+    assert.notEqual(sim.state.over, 'defeat', `${preset.id} died: ${sim.state.cause}`);
+  }
+});
+
+test('preset capture round-trips the important state', () => {
+  const sim = new GameSim();
+  sim.state.tick = 70;
+  sim.state.resources.energy = 44;
+  sim.state.machines.battery.upgrades.push('battery_cells');
+  sim.recomputeStats();
+  const preset = sim.capturePreset('capture-test', { x: 1, z: 2 });
+  const restored = new GameSim();
+  restored.loadPreset(preset);
+  assert.equal(restored.state.tick, 70);
+  assert.equal(restored.state.resources.energy, 44);
+  assert.equal(restored.state.machines.battery.upgrades.includes('battery_cells'), true);
+  assert.ok(restored.energyCapacity > 100);
+});

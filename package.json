@@ -1,0 +1,25 @@
+{
+  "name": "outpost-lunar",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Junior Astronaut Mission Trainer — Outpost Lunar, a Three.js adaptation of the MindSpace design document.",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "audit": "node scripts/audit.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "check": "npm run audit && npm test && npm run build"
+  },
+  "dependencies": {
+    "@fontsource/orbitron": "^5.1.1",
+    "@fontsource/rajdhani": "^5.1.1",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.1",
+    "vite": "^6.0.5"
+  }
+}
