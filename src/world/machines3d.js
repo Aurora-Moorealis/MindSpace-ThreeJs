@@ -862,6 +862,8 @@ export function buildHoloTable() {
 
 export function buildPoi(poi) {
   const group = new THREE.Group();
+  let missionState = 'pending';
+  let missionCurrent = false;
   const ringMaterialFilled = new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false });
   const ringMaterialEmpty = new THREE.MeshBasicMaterial({ color: 0x214152, toneMapped: false });
   const segments = [];
@@ -898,17 +900,28 @@ export function buildPoi(poi) {
       opacity: 0.18,
       side: THREE.DoubleSide,
       depthWrite: false,
+      depthTest: false,
       blending: THREE.AdditiveBlending,
     })
   );
   beacon.position.y = 4;
+  beacon.renderOrder = 24;
   group.add(beacon);
   const light = sphere(0.12, 8, COLORS.teal, {
-    material: new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false }),
+    material: new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false, depthTest: false }),
     castShadow: false,
   });
   light.position.y = 2.0;
+  light.renderOrder = 25;
   group.add(light);
+  const currentDiamond = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.26, 0),
+    new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false, depthTest: false })
+  );
+  currentDiamond.position.y = 5.4;
+  currentDiamond.visible = false;
+  currentDiamond.renderOrder = 26;
+  group.add(currentDiamond);
   const pole = cylinder(0.03, 0.03, 2.2, 5, COLORS.metal);
   pole.position.set(1.4, 1.1, -1.1);
   group.add(pole);
@@ -934,19 +947,35 @@ export function buildPoi(poi) {
     group,
     colliders: [],
     labelHeight: 2.9,
-    parts: { segments, ringMaterialFilled, ringMaterialEmpty, beacon, light, flag, drill },
+    parts: { segments, ringMaterialFilled, ringMaterialEmpty, beacon, light, flag, drill, currentDiamond },
+    setMissionState(state, current) {
+      missionState = state;
+      missionCurrent = Boolean(current);
+      const color =
+        state === 'reported' ? COLORS.green : state === 'sampled' ? COLORS.amber : COLORS.teal;
+      beacon.material.color.setHex(color);
+      light.material.color.setHex(color);
+      ringMaterialFilled.color.setHex(color);
+      currentDiamond.material.color.setHex(color);
+      currentDiamond.visible = missionCurrent;
+      light.scale.setScalar(missionCurrent ? 1.6 : 1);
+      beacon.material.opacity = missionCurrent ? 0.26 : state === 'reported' ? 0.06 : 0.16;
+    },
     setProgress(progress, scanned) {
       const filled = Math.round(progress * segments.length);
       segments.forEach((segment, i) => {
         segment.material = scanned || i < filled ? ringMaterialFilled : ringMaterialEmpty;
       });
-      const color = scanned ? COLORS.green : COLORS.teal;
-      beacon.material.color.setHex(color);
-      light.material.color.setHex(color);
-      beacon.material.opacity = scanned ? 0.10 : 0.16 + Math.sin(performance.now() * 0.002) * 0.04;
     },
     update(dt) {
       flag.rotation.y = Math.sin(performance.now() * 0.001) * 0.08;
+      if (missionCurrent) {
+        currentDiamond.rotation.y += dt * 2.2;
+        currentDiamond.position.y = 5.4 + Math.sin(performance.now() * 0.003) * 0.14;
+      }
+      const base = missionCurrent ? 0.24 : missionState === 'reported' ? 0.06 : 0.14;
+      const amplitude = missionCurrent ? 0.08 : missionState === 'reported' ? 0 : 0.04;
+      beacon.material.opacity = base + Math.sin(performance.now() * 0.0024) * amplitude;
     },
   };
 }

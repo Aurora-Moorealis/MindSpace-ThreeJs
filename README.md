@@ -27,10 +27,13 @@ evaluación.
 
 - **Jugable de principio a fin** en navegador de escritorio: título → intro →
   tutorial → base → escaneo → informes → evaluación → freeplay.
-- **Sin servidor, sin HTTP en runtime.** Los datos NASA están embebidos y las
-  fuentes solo se abren si el jugador hace clic en un enlace.
-- **Sin guardado.** Recargar la página empieza una partida nueva, como pide el
-  diseño original.
+- **Sin peticiones externas en runtime.** Los datos NASA están embebidos, los
+  modelos 3D se sirven como assets locales del build y las fuentes solo se abren
+  si el jugador hace clic en un enlace.
+- **Guardado local automático.** La partida en curso se guarda en el navegador
+  en cada tick y al pausar, y el título ofrece continuarla. Ganar conserva el
+  guardado marcado como completado; perder la misión lo elimina. Los presets de
+  demo no tocan el guardado real.
 - **Dos presets de demo** para ver el arco completo en minutos:
   - *Mid-mission*: un informe entregado, una muestra en la mochila, contratos
     listos y una ventana de radiación a 3 horas de juego.
@@ -64,6 +67,7 @@ una build de Windows.
 | Tecla | Acción |
 | --- | --- |
 | `W A S D` / flechas | Mover a la astronauta |
+| `Shift` (mantener) | Sprint mientras se mueve |
 | `E` | Interactuar, abrir una máquina, empezar un escaneo |
 | `1` / `2` / `3` | Velocidad del reloj ×1 / ×5 / ×10 |
 | `P` | Pausa |
@@ -114,11 +118,23 @@ pero **nunca el envío de informes**.
 
 ### Misión y contratos
 
-- Escanea **3 sitios** exteriores manteniéndote quieta durante 3 segundos.
+- Escanea **3 sitios** exteriores manteniéndote quieta durante 3 segundos. Cada
+  sitio muestra su estado en el mundo: pendiente, muestra lista o informe
+  enviado; el objetivo actual se resalta y coincide con el HUD.
 - Lleva las muestras a la **consola de comunicaciones** y envía **3 informes**.
 - Cuatro contratos opcionales con condiciones fijas; se reclaman en la consola.
-- Al ganar o perder, la **evaluación** muestra cinco contadores y una línea de
-  tiempo con lo que pasó.
+- Al ganar o perder, la **evaluación** muestra cinco contadores, una línea de
+  tiempo y qué pasó con el guardado de la misión.
+
+### Guardado y reanudación
+
+El progreso de la misión se guarda en `localStorage` con la clave
+`outpost-lunar.save.v1`. Al volver al título, la tarjeta de Artemis Ridge indica
+si la misión está en curso o completada y ofrece `CONTINUE MISSION` o
+`CONTINUE FREEPLAY`. Empezar una misión nueva con un guardado existente pide
+confirmación antes de sobrescribirlo. Ganar conserva la partida completada;
+perder una misión en curso borra su guardado, y una derrota posterior en
+freeplay no borra una misión ya ganada.
 
 ### Máquinas
 
@@ -158,8 +174,9 @@ ECLSS/ISS OGS) y **Simulated**. La especificación y la tarea pendiente para
 mostrar esa división en el panel están en
 [`docs/DATA-SOURCES.md#recursos-oficiales-del-challenge-y-fuentes-externas`](docs/DATA-SOURCES.md#recursos-oficiales-del-challenge-y-fuentes-externas).
 
-El juego **no hace peticiones de red en runtime**. Los enlaces se abren solo al
-hacer clic. No es un producto oficial de NASA ni está avalado por NASA.
+El juego **no hace peticiones de red externas en runtime**. Los modelos GLB se
+sirven desde el propio build y los enlaces se abren solo al hacer clic. No es un
+producto oficial de NASA ni está avalado por NASA.
 
 ## Estructura del proyecto
 
@@ -175,8 +192,11 @@ MindSpace-ThreeJs/
 ├── scripts/
 │   ├── audit.mjs          # DataAudit headless
 │   ├── balance.mjs        # simulación headless de políticas
-│   └── smoke.mjs          # Playwright (opcional)
+│   ├── smoke.mjs          # Playwright (opcional)
+│   └── models/
+│       └── build_models.py  # genera los GLB con Blender
 ├── src/
+│   ├── assets/models/     # rover, lander y astronauta (GLB)
 │   ├── core/
 │   │   ├── sim.js         # GameSim: tick determinista
 │   │   ├── event-log.js   # ledger append-only
@@ -198,10 +218,26 @@ MindSpace-ThreeJs/
 
 ```bash
 npm run audit     # valida ids, rangos, referencias y procedencia
-npm test          # 34 tests de simulación, datos y evaluación
+npm test          # 58 tests de simulación, datos y evaluación
 npm run build     # build de Vite
 npm run check     # audit + tests + build
 ```
+
+### Modelos 3D
+
+El rover, el lander y la astronauta son GLB de autoría propia, modelados con
+Blender. Se generan de forma reproducible (unidades en metros, low-poly, sin
+texturas externas):
+
+```bash
+npm run models    # requiere Blender en el PATH; tarda unos segundos
+```
+
+El script `scripts/models/build_models.py` reconstruye
+`src/assets/models/*.glb` y deja previews en `/tmp/opencode`. El juego carga los
+tres al arrancar; si alguno falta o está corrupto, usa la geometría procedural
+de respaldo y sigue jugando. Las máquinas y el resto de props continúan siendo
+procedurales.
 
 El **DataAudit** corre también al arrancar en desarrollo y aparece en el overlay
 `F1`. Valida:
@@ -237,6 +273,8 @@ el Chromium ya cacheado; la variable de entorno es opcional.
   Outpost Lunar**.
 - Motor: [Three.js](https://threejs.org/).
 - Build: [Vite](https://vite.dev/).
+- Modelos 3D (rover, lander, astronauta): autoría propia, generados con
+  [Blender](https://www.blender.org/) desde `scripts/models/build_models.py`.
 - Tipografías autohospedadas: [Fontsource](https://fontsource.org/)
   (Orbitron, Rajdhani), licencias SIL OFL.
 - Datos: NASA CCMC DONKI, LRO CRaTeR, NASA BVAD/ECLSS. Enlaces y fechas en el
