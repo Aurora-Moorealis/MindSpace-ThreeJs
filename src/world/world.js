@@ -5,7 +5,7 @@
  */
 
 import * as THREE from 'three';
-import { buildBase, getRoomAt } from './base.js';
+import { buildBase, getRoomAt, ROOMS } from './base.js';
 import { buildExterior } from './exterior.js';
 import { Astronaut } from './astronaut.js';
 import {
@@ -76,7 +76,7 @@ class WorldLabel {
     ctx.fillText(title, 38, subtitle ? 57 : h / 2, w - 60);
     if (subtitle) {
       ctx.fillStyle = '#9db4cc';
-      ctx.font = '600 25px "Rajdhani", "Segoe UI", sans-serif';
+      ctx.font = `600 ${Math.round(this.fontSize * 0.56)}px "Rajdhani", "Segoe UI", sans-serif`;
       ctx.fillText(subtitle, 38, 104, w - 60);
     }
     if (detail) {
@@ -121,6 +121,8 @@ export class World {
     this.poiLabels = new Map();
     this.stateAccum = 0;
     this.nearestId = null;
+    this.roomSigns = [];
+    this.showRoomSigns = false;
 
     this.base = buildBase();
     this.group.add(this.base.group);
@@ -133,6 +135,7 @@ export class World {
     this._buildMachines();
     this._buildStations();
     this._buildPois();
+    this._buildRoomSigns();
 
     this.astronaut = new Astronaut();
     this.group.add(this.astronaut.group);
@@ -167,7 +170,7 @@ export class World {
         });
       }
 
-      const label = new WorldLabel(STRINGS[row.nameKey] ?? row.id);
+      const label = new WorldLabel(STRINGS[row.nameKey] ?? row.id, { worldWidth: 4.2, height: 190, fontSize: 46 });
       label.sprite.position.set(
         row.position[0],
         (isExterior ? -0.08 : 0) + visual.labelHeight + 0.2,
@@ -194,7 +197,7 @@ export class World {
     board.group.rotation.y = MISSION_BOARD.rotationY ?? 0;
     this.group.add(board.group);
     this.colliders.push({ minX: -5.9, maxX: -3.1, minZ: 3.95, maxZ: 5.05 });
-    const boardLabel = new WorldLabel(STRINGS['station.mission_board.name']);
+    const boardLabel = new WorldLabel(STRINGS['station.mission_board.name'], { worldWidth: 4.2, height: 190, fontSize: 46 });
     boardLabel.sprite.position.set(MISSION_BOARD.position[0], board.labelHeight + 0.3, MISSION_BOARD.position[2]);
     this.group.add(boardLabel.sprite);
     this.boardLabel = boardLabel;
@@ -221,7 +224,7 @@ export class World {
       visual.group.position.set(poi.position[0], -0.08, poi.position[2]);
       this.group.add(visual.group);
       this.poiVisuals.set(poi.id, visual);
-      const label = new WorldLabel(`SITE ${poi.code}`, { worldWidth: 3.4 });
+      const label = new WorldLabel(`SITE ${poi.code}`, { worldWidth: 4.8, height: 190, fontSize: 48 });
       label.sprite.position.set(poi.position[0], visual.labelHeight, poi.position[2]);
       this.group.add(label.sprite);
       this.poiLabels.set(poi.id, label);
@@ -234,6 +237,32 @@ export class World {
         label,
         visual,
       });
+    }
+  }
+
+  _buildRoomSigns() {
+    const rows = [
+      { id: 'dormitory', title: 'DORMITORY', sub: 'CREW QUARTERS · STORM SHELTER', color: '#ffd8ad', x: -21.5, z: -15.25, y: 1.95 },
+      { id: 'greenhouse', title: 'GREENHOUSE', sub: 'HYDROPONICS · FOOD + O₂', color: '#8ef0b0', x: -5, z: -15.25, y: 1.95 },
+      { id: 'energy', title: 'POWER ROOM', sub: 'SOLAR · BATTERY · DISTRIBUTION', color: '#ffcf88', x: 15, z: -15.25, y: 1.95 },
+      { id: 'comms', title: 'COMMUNICATIONS', sub: 'DSN TERMINAL · SCIENCE REPORTS', color: '#9fc4ff', x: -18.5, z: 3.0, y: 1.95 },
+      { id: 'workshop', title: 'WORKSHOP', sub: 'O₂ · WATER · REPAIR BENCH', color: '#ffc08a', x: 17, z: 3.0, y: 1.95 },
+    ];
+    for (const row of rows) {
+      const label = new WorldLabel(row.title, { worldWidth: 5.6, height: 180, fontSize: 48 });
+      label.update(row.title, row.sub, row.color);
+      label.sprite.position.set(row.x, row.y, row.z);
+      label.sprite.visible = false;
+      label.material.depthTest = true;
+      this.group.add(label.sprite);
+      this.roomSigns.push({ ...row, label });
+    }
+  }
+
+  setRoomSignsVisible(visible) {
+    this.showRoomSigns = Boolean(visible);
+    if (!this.showRoomSigns) {
+      for (const sign of this.roomSigns) sign.label.sprite.visible = false;
     }
   }
 
@@ -536,6 +565,15 @@ export class World {
         label.sprite.renderOrder = 30;
         label.material.opacity = 1;
       }
+    }
+
+    // Room signs: large, camera-facing, only for the room the astronaut is in.
+    const currentRoom = getRoomAt(player.x, player.z);
+    for (const sign of this.roomSigns) {
+      const dist = Math.hypot(player.x - sign.x, player.z - sign.z);
+      const visible = this.showRoomSigns && (sign.id === currentRoom || dist < 6.5);
+      sign.label.sprite.visible = visible;
+      if (visible) sign.label.material.opacity = sign.id === currentRoom ? 1 : Math.max(0.35, 1 - dist / 10);
     }
 
     // Objective beacon.

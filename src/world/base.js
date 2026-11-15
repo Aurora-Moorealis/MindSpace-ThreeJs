@@ -224,11 +224,11 @@ export class BaseBuilder {
     group.add(light);
     if (label) {
       const sprite = makeTextSprite(label, {
-        worldWidth: Math.min(2.8, width + 0.8),
-        background: 'rgba(6, 12, 20, 0.88)',
+        worldWidth: Math.min(3.8, width + 1.2),
+        background: 'rgba(6, 12, 20, 0.9)',
         border: 'rgba(77,226,255,0.65)',
         accent: '#4de2ff',
-        fontSize: 38,
+        fontSize: 46,
       });
       sprite.position.set(centerX, height + 0.45, centerZ + (horizontal ? 0.05 : 0));
       group.add(sprite);
@@ -252,7 +252,7 @@ export class BaseBuilder {
   }
 
   roomDecal(text, x, z, width = 6, color = '#dfe8f4') {
-    const decal = makeFloorDecal(text, width, color, { accent: true, fontSize: 46 });
+    const decal = makeFloorDecal(text, width, color, { accent: true, fontSize: 62 });
     decal.position.set(x, 0.07, z);
     this.group.add(decal);
     return decal;
@@ -306,11 +306,11 @@ export class BaseBuilder {
     light.position.set(0, height + 0.25, 0.2);
     group.add(light);
     const sprite = makeTextSprite(label, {
-      worldWidth: 2.3,
+      worldWidth: 3.0,
       background: 'rgba(6, 12, 20, 0.9)',
       border: 'rgba(255,179,71,0.8)',
       accent: '#ffb347',
-      fontSize: 36,
+      fontSize: 44,
     });
     sprite.position.set(0, height + 0.7, 0);
     group.add(sprite);
@@ -683,13 +683,13 @@ export class BaseBuilder {
     this.addDoor({ x: 0, z: 16, width: 4.2, label: 'EVA HATCH', panelColor: 0x5b6470 });
 
     // Room floor labels.
-    this.roomDecal('DORMITORY', -21.5, -4.2, 6.5, '#ffd8ad');
-    this.roomDecal('GREENHOUSE', -5, -4.2, 6.5, '#b9ffd2');
-    this.roomDecal('POWER', 15, -4.2, 6.0, '#ffe2a8');
-    this.roomDecal('COMMUNICATIONS', -18.5, 4.3, 7.5, '#c6ddff');
-    this.roomDecal('WORKSHOP', 17, 4.3, 6.5, '#ffd2a8');
-    this.roomDecal('ARTEMIS RIDGE', 0, 4.25, 6.0, '#bff4ff');
-    this.roomDecal('AIRLOCK', 0, 7.0, 4.2, '#ffd2a8');
+    this.roomDecal('DORMITORY', -21.5, -4.2, 8.5, '#ffd8ad');
+    this.roomDecal('GREENHOUSE', -5, -4.2, 8.5, '#b9ffd2');
+    this.roomDecal('POWER', 15, -4.2, 8.0, '#ffe2a8');
+    this.roomDecal('COMMUNICATIONS', -18.5, 4.3, 9.5, '#c6ddff');
+    this.roomDecal('WORKSHOP', 17, 4.3, 8.5, '#ffd2a8');
+    this.roomDecal('CENTRAL HUB', 0, 4.25, 7.5, '#bff4ff');
+    this.roomDecal('AIRLOCK', 0, 7.0, 5.5, '#ffd2a8');
 
     // Corridor and room lighting.
     this.wallLight(-26, -2.32);
