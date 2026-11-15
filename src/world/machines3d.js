@@ -13,6 +13,7 @@ import {
   box,
   cylinder,
   glowBar,
+  glowMaterial,
   material,
   rounded,
   sphere,
