@@ -97,6 +97,8 @@ export const ECONOMY = {
     damageAbove: 70,
     damagePerTick: 0.45,
     deathDose: 100,
+    msvPerPoint: 2.5,
+    msvLimit: 250,
     suitMk2Factor: 0.55,
     lowSuitExtra: 0.8,
     lowSuitBelow: 65,
@@ -106,7 +108,7 @@ export const ECONOMY = {
     shelterBaseShield: 0.7,
     source: 'crater',
     scaleNote:
-      'A 300-hour mission is mapped onto a 0-100 dose budget. The 30-point threshold references the 30-day radiation limit concept; 100 is a game-over abstraction, not a clinical value.',
+      'A 300-hour mission is mapped onto a 0-100 dose budget. One point is presented as 2.5 mSv, so 100 points equal the 250 mSv NASA mission limit. The model is an educational simplification, not a clinical dose assessment.',
   },
 
   suit: {
@@ -148,6 +150,34 @@ export const ECONOMY = {
     source: 'gameplay',
   },
 
+  // Real light time is kept; relay passes are compressed so a 300-hour mission
+  // can show the wait without planning days ahead like a real DSN schedule.
+  comms: {
+    lightDelayOneWaySeconds: 1.28,
+    lightDelayRoundTripSeconds: 2.56,
+    relayIntervalTicks: 4,
+    relayPhaseTicks: 2,
+    source: 'mission',
+    scaleNote:
+      'Light time is real (1.28 s one way). Relay passes are compressed: a real DSN schedule is planned days ahead, while the game opens a pass every four hours so a mission can show the wait.',
+  },
+
+  // Trays replace the old continuous food output. A real leafy-green crop takes
+  // about 28 days; the game compresses it to 30 game hours so several full
+  // cycles fit inside one mission.
+  hydroponics: {
+    trays: 3,
+    cycleTicks: 30,
+    stages: 4,
+    yieldFood: 10,
+    plantCost: { water: 1, energy: 1 },
+    realCycleDays: 28,
+    realReference: 'Leafy greens (Veggie, ~28 days)',
+    source: 'bvad',
+    scaleNote:
+      'A real leafy-green crop takes about 28 days. The game compresses it to 30 game hours so a student can see several full cycles during a 300-hour mission.',
+  },
+
   power: {
     lightsPower: 0.9,
     lightsOnlyAtNight: true,
@@ -167,7 +197,7 @@ export const ECONOMY = {
   ],
 };
 
-export const DAY_NAMES = ['Sol'];
+export const DAY_NAMES = ['Mission day'];
 
 export function getHourOfDay(tick) {
   return (tick + ECONOMY.time.firstHour) % ECONOMY.time.solTicks;
@@ -177,9 +207,16 @@ export function getSol(tick) {
   return Math.floor(tick / ECONOMY.time.solTicks) + 1;
 }
 
+/** Mission day, 1-based. Semantic alias of [getSol]; the name is presentation-only. */
+export function getMissionDay(tick) {
+  return getSol(tick);
+}
+
 export function getClockLabel(tick) {
-  const hour = getHourOfDay(tick);
-  return `${String(hour).padStart(2, '0')}:00`;
+  const totalMinutes = Math.floor(Math.max(0, tick) * 60 + 1e-6);
+  const hour = (Math.floor(totalMinutes / 60) + ECONOMY.time.firstHour) % ECONOMY.time.solTicks;
+  const minute = totalMinutes % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
 export function isDaylight(tick) {
@@ -188,5 +225,19 @@ export function isDaylight(tick) {
 }
 
 export function formatMissionTime(tick) {
-  return `Sol ${getSol(tick)} · ${getClockLabel(tick)}`;
+  return `MISSION DAY ${getMissionDay(tick)} · ${getClockLabel(tick)}`;
+}
+
+/** Converts a 0-100 dose budget reading into millisieverts. */
+export function doseMsv(points) {
+  return points * ECONOMY.radiation.msvPerPoint;
+}
+
+/**
+ * Compact dose label: points with one decimal plus the mSv equivalent. Whole
+ * mSv values drop the trailing ".0" so thresholds read as "30.0 · 75 mSv".
+ */
+export function formatDose(points) {
+  const msv = Number(doseMsv(points).toFixed(1));
+  return `${points.toFixed(1)} · ${msv} mSv`;
 }

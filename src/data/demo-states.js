@@ -60,6 +60,7 @@ export const DEMO_PRESETS = [
       comms_console: machineRow(97),
       storm_shelter: machineRow(100),
     },
+    crops: [{ progress: 18 }, { progress: 5 }, null],
     scans: ['site_a', 'site_b'],
     samples: ['site_b'],
     reports: ['site_a'],
@@ -85,6 +86,7 @@ export const DEMO_PRESETS = [
       scans: 2,
       stormsSurvived: 1,
       energyWasted: 0,
+      harvests: 3,
     },
     log: seedLog([
       { tick: 6, type: 'storm_started', payload: { eventId: 'storm_gannon_arrival', source: 'donki_cme' } },
@@ -132,6 +134,7 @@ export const DEMO_PRESETS = [
       comms_console: machineRow(95),
       storm_shelter: machineRow(100, { upgrades: ['shelter_shield'] }),
     },
+    crops: [{ progress: 26 }, { progress: 11 }, null],
     scans: ['site_a', 'site_b', 'site_c'],
     samples: ['site_c'],
     reports: ['site_a', 'site_b'],
@@ -158,6 +161,7 @@ export const DEMO_PRESETS = [
       scans: 3,
       stormsSurvived: 5,
       energyWasted: 18,
+      harvests: 7,
     },
     log: seedLog([
       { tick: 6, type: 'storm_started', payload: { eventId: 'storm_gannon_arrival', source: 'donki_cme' } },

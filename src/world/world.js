@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { buildBase, getRoomAt } from './base.js';
 import { buildExterior } from './exterior.js';
+import { generateProceduralMap, randomSeed } from './map-gen.js';
 import { Astronaut } from './astronaut.js';
 import {
   buildMachine,
@@ -102,18 +103,25 @@ function rotateLocal(x, z, rotation) {
 }
 
 export class World {
-  constructor(scene, sim, models = null) {
+  constructor(scene, sim, { models = null, mapSeed = null } = {}) {
     this.scene = scene;
     this.sim = sim;
     this.models = models;
     this.group = new THREE.Group();
     this.scene.add(this.group);
+    this._staticColliders = [];
+    this._staticInteractables = [];
     this.colliders = [];
     this.interactables = [];
     this.machineVisuals = new Map();
     this.poiVisuals = new Map();
     this.poiLabels = new Map();
     this.veinVisuals = new Map();
+    this.pois = POIS;
+    this.mineralVeins = [];
+    this.prototypeTruck = NASA_PROTOTYPE_TRUCK;
+    this.exteriorGroup = null;
+    this.mapData = null;
     this.missionStates = new Map();
     this.currentMissionTarget = null;
     this.missionMarkerSignature = '';
@@ -122,17 +130,11 @@ export class World {
 
     this.base = buildBase();
     this.group.add(this.base.group);
-    this.colliders.push(...this.base.colliders);
-
-    this.exterior = buildExterior(models);
-    this.group.add(this.exterior.group);
-    this.colliders.push(...this.exterior.colliders);
+    this._staticColliders.push(...this.base.colliders);
 
     this._buildMachines();
     this._buildStations();
-    this._buildPois();
-    this._buildMineralVeins();
-    this._buildNasaTruck();
+    this._buildSolarPowerCable();
     this._buildRoomSigns();
 
     this.astronaut = new Astronaut(models?.astronaut);
@@ -141,7 +143,59 @@ export class World {
     this._buildHighlight();
     this._buildObjectiveMarker();
 
-    this.bounds = { minX: -46, maxX: 46, minZ: -15.1, maxZ: 61.5 };
+    this.regenerateExterior(mapSeed ?? randomSeed());
+  }
+
+  _disposeObject(root) {
+    if (!root) return;
+    root.traverse((obj) => {
+      obj.geometry?.dispose?.();
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const mat of mats) {
+        if (!mat) continue;
+        mat.map?.dispose?.();
+        mat.dispose?.();
+      }
+    });
+  }
+
+  regenerateExterior(seedInput) {
+    if (this.exteriorGroup) {
+      this.group.remove(this.exteriorGroup);
+      this._disposeObject(this.exteriorGroup);
+    }
+    this.poiVisuals.clear();
+    this.poiLabels.clear();
+    this.veinVisuals.clear();
+
+    this.exteriorGroup = new THREE.Group();
+    this.group.add(this.exteriorGroup);
+
+    this.mapData = generateProceduralMap(seedInput);
+    this.pois = this.mapData.pois;
+    this.mineralVeins = this.mapData.mineralVeins;
+    this.prototypeTruck = this.mapData.prototypeTruck;
+    this.bounds = { ...this.mapData.bounds };
+
+    this.colliders = [...this._staticColliders];
+    this.interactables = [...this._staticInteractables];
+
+    this.exterior = buildExterior(this.mapData, this.models);
+    this.exteriorGroup.add(this.exterior.group);
+    this.colliders.push(...this.exterior.colliders);
+
+    this._buildPois();
+    this._buildMineralVeins();
+    this._buildNasaTruck();
+
+    if (this.currentMissionTarget) {
+      this.setObjective(this.currentMissionTarget);
+    }
+    return this.mapData;
+  }
+
+  getTerrainHeight(x, z) {
+    return this.mapData?.heightAt ? this.mapData.heightAt(x, z) : 0;
   }
 
   _buildMachines() {
@@ -160,7 +214,7 @@ export class World {
         const cz = row.position[2] + rotated.z;
         const w = swap ? collider.d : collider.w;
         const d = swap ? collider.w : collider.d;
-        this.colliders.push({
+        this._staticColliders.push({
           minX: cx - w / 2,
           maxX: cx + w / 2,
           minZ: cz - d / 2,
@@ -168,7 +222,7 @@ export class World {
         });
       }
 
-      this.interactables.push({
+      this._staticInteractables.push({
         id: row.id,
         type: 'machine',
         machineId: row.id,
@@ -184,8 +238,8 @@ export class World {
     board.group.position.set(MISSION_BOARD.position[0], 0, MISSION_BOARD.position[2]);
     board.group.rotation.y = MISSION_BOARD.rotationY ?? 0;
     this.group.add(board.group);
-    this.colliders.push({ minX: -5.9, maxX: -3.1, minZ: 3.95, maxZ: 5.05 });
-    this.interactables.push({
+    this._staticColliders.push({ minX: -5.9, maxX: -3.1, minZ: 3.95, maxZ: 5.05 });
+    this._staticInteractables.push({
       id: 'mission_board',
       type: 'station',
       stationId: 'mission_board',
@@ -197,20 +251,20 @@ export class World {
     const holo = buildHoloTable();
     holo.group.position.set(4.5, 0, 3.6);
     this.group.add(holo.group);
-    this.colliders.push({ minX: 3.2, maxX: 5.8, minZ: 2.3, maxZ: 4.9 });
+    this._staticColliders.push({ minX: 3.2, maxX: 5.8, minZ: 2.3, maxZ: 4.9 });
     this.holo = holo;
 
     // Greenhouse Ice Melter connected by liquid pipe to Hydroponics plants.
     const iceMelter = buildIceMelter();
     iceMelter.group.position.set(-9.2, 0, -10);
     this.group.add(iceMelter.group);
-    this.colliders.push({ minX: -10.3, maxX: -8.1, minZ: -10.95, maxZ: -9.05 });
+    this._staticColliders.push({ minX: -10.3, maxX: -8.1, minZ: -10.95, maxZ: -9.05 });
     const melterLabel = new WorldLabel('ICE MELTER', { worldWidth: 3.4, height: 170, fontSize: 44 });
     melterLabel.update('ICE MELTER', 'MELT H₂O ICE → PLANTS', '#4de2ff');
     melterLabel.sprite.position.set(-9.2, iceMelter.labelHeight, -10);
     this.group.add(melterLabel.sprite);
     this.iceMelter = iceMelter;
-    this.interactables.push({
+    this._staticInteractables.push({
       id: 'ice_melter',
       type: 'station',
       stationId: 'ice_melter',
@@ -221,21 +275,101 @@ export class World {
     });
   }
 
+  _buildSolarPowerCable() {
+    const solar = MACHINES.solar_array;
+    const battery = MACHINES.battery;
+    const dist = MACHINES.power_distributor;
+    if (!solar || !battery || !dist) return;
+
+    const rot = solar.rotationY ?? 0;
+    const invLocal = rotateLocal(0, 2.9, rot);
+    const startX = solar.position[0] + invLocal.x;
+    const startZ = solar.position[2] + invLocal.z;
+    const batX = battery.position[0];
+    const batZ = battery.position[2];
+    const distX = dist.position[0];
+    const distZ = dist.position[2];
+
+    const points = [
+      new THREE.Vector3(startX, 0.34, startZ),
+      new THREE.Vector3(startX, 0.06, startZ - 1.4),
+      new THREE.Vector3(startX, 0.05, 17.6),
+      new THREE.Vector3(27.35, 0.05, 17.6),
+      new THREE.Vector3(27.35, 0.45, 15.8),
+      new THREE.Vector3(27.35, 0.45, batZ),
+      new THREE.Vector3(26.7, 0.45, batZ),
+      new THREE.Vector3(batX, 0.45, batZ),
+      new THREE.Vector3(distX, 0.45, distZ),
+    ];
+
+    const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.14);
+    const sheathMat = new THREE.MeshStandardMaterial({
+      color: 0x1e2530,
+      roughness: 0.7,
+      metalness: 0.35,
+    });
+    const sheath = new THREE.Mesh(new THREE.TubeGeometry(curve, 96, 0.075, 8, false), sheathMat);
+    sheath.receiveShadow = true;
+    this.group.add(sheath);
+
+    const conductorCurve = new THREE.CatmullRomCurve3(
+      points.map((p) => new THREE.Vector3(p.x, p.y + 0.055, p.z)),
+      false,
+      'catmullrom',
+      0.14
+    );
+    this.solarCableMat = new THREE.MeshStandardMaterial({
+      color: COLORS.amber,
+      emissive: COLORS.amber,
+      emissiveIntensity: 0.75,
+      roughness: 0.35,
+      metalness: 0.4,
+    });
+    const conductor = new THREE.Mesh(new THREE.TubeGeometry(conductorCurve, 96, 0.032, 6, false), this.solarCableMat);
+    this.group.add(conductor);
+
+    // Cable clamps on the exterior apron and east wall conduit + wall feed-through junction box.
+    const clampMat = new THREE.MeshStandardMaterial({ color: 0x3b4656, roughness: 0.55, metalness: 0.45 });
+    for (const [cx, cy, cz, w, h, d] of [
+      [startX, 0.06, 21.2, 0.36, 0.14, 0.24],
+      [startX, 0.06, 18.2, 0.36, 0.14, 0.24],
+      [21.5, 0.06, 17.6, 0.24, 0.14, 0.36],
+      [27.35, 0.45, 8.0, 0.22, 0.24, 0.28],
+      [27.35, 0.45, 0.0, 0.22, 0.24, 0.28],
+      [27.35, 0.45, -7.5, 0.22, 0.24, 0.28],
+    ]) {
+      const clamp = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), clampMat);
+      clamp.position.set(cx, cy, cz);
+      this.group.add(clamp);
+    }
+
+    const junctionBox = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 0.55), clampMat);
+    junctionBox.position.set(27.0, 0.48, batZ);
+    this.group.add(junctionBox);
+    const junctionLed = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.12, 0.16),
+      this.solarCableMat
+    );
+    junctionLed.position.set(27.0, 0.72, batZ);
+    this.group.add(junctionLed);
+  }
+
   _buildPois() {
-    for (const poi of POIS) {
+    for (const poi of this.pois) {
+      const yBase = this.getTerrainHeight(poi.position[0], poi.position[2]) - 0.08;
       const visual = buildPoi(poi);
-      visual.group.position.set(poi.position[0], -0.08, poi.position[2]);
-      this.group.add(visual.group);
+      visual.group.position.set(poi.position[0], yBase, poi.position[2]);
+      this.exteriorGroup.add(visual.group);
       this.poiVisuals.set(poi.id, visual);
       const label = new WorldLabel(`SITE ${poi.code}`, { worldWidth: 4.8, height: 190, fontSize: 48 });
-      label.sprite.position.set(poi.position[0], visual.labelHeight, poi.position[2]);
-      this.group.add(label.sprite);
+      label.sprite.position.set(poi.position[0], yBase + visual.labelHeight, poi.position[2]);
+      this.exteriorGroup.add(label.sprite);
       this.poiLabels.set(poi.id, label);
       this.interactables.push({
         id: poi.id,
         type: 'poi',
         poiId: poi.id,
-        position: new THREE.Vector3(poi.position[0], 0, poi.position[2]),
+        position: new THREE.Vector3(poi.position[0], yBase + 0.08, poi.position[2]),
         radius: 3.4,
         label,
         visual,
@@ -244,12 +378,13 @@ export class World {
   }
 
   _buildMineralVeins() {
-    for (const vein of MINERAL_VEINS) {
+    for (const vein of this.mineralVeins) {
       const mineral = MINERALS[vein.mineralId];
       if (!mineral) continue;
+      const yBase = this.getTerrainHeight(vein.position[0], vein.position[2]) - 0.08;
       const visual = buildMineralVein(vein, mineral);
-      visual.group.position.set(vein.position[0], -0.08, vein.position[2]);
-      this.group.add(visual.group);
+      visual.group.position.set(vein.position[0], yBase, vein.position[2]);
+      this.exteriorGroup.add(visual.group);
       this.veinVisuals.set(vein.id, visual);
 
       for (const collider of visual.colliders ?? []) {
@@ -267,15 +402,15 @@ export class World {
         `MOHS ${mineral.mohs} · ${mineral.mineSeconds.toFixed(1)}s · INFINITE`,
         mineral.hex
       );
-      label.sprite.position.set(vein.position[0], visual.labelHeight, vein.position[2]);
-      this.group.add(label.sprite);
+      label.sprite.position.set(vein.position[0], yBase + visual.labelHeight, vein.position[2]);
+      this.exteriorGroup.add(label.sprite);
 
       this.interactables.push({
         id: vein.id,
         type: 'mineral',
         veinId: vein.id,
         mineralId: mineral.id,
-        position: new THREE.Vector3(vein.position[0], 0, vein.position[2]),
+        position: new THREE.Vector3(vein.position[0], yBase + 0.08, vein.position[2]),
         radius: 3.1,
         label,
         visual,
@@ -284,11 +419,12 @@ export class World {
   }
 
   _buildNasaTruck() {
-    const proto = NASA_PROTOTYPE_TRUCK;
+    const proto = this.prototypeTruck ?? NASA_PROTOTYPE_TRUCK;
+    const yBase = this.getTerrainHeight(proto.position[0], proto.position[2]) - 0.08;
     const visual = buildNasaTruck(proto);
-    visual.group.position.set(proto.position[0], -0.08, proto.position[2]);
+    visual.group.position.set(proto.position[0], yBase, proto.position[2]);
     visual.group.rotation.y = proto.rotationY ?? 0;
-    this.group.add(visual.group);
+    this.exteriorGroup.add(visual.group);
     this.truckVisual = visual;
 
     for (const collider of visual.colliders ?? []) {
@@ -308,13 +444,13 @@ export class World {
 
     const label = new WorldLabel('NASA SEV · CHARIOT', { worldWidth: 4.8, height: 180, fontSize: 44 });
     label.update('NASA SEV · CHARIOT', '12-WHEEL LUNAR TRUCK PROTOTYPE', '#ffb347');
-    label.sprite.position.set(proto.position[0], visual.labelHeight, proto.position[2]);
-    this.group.add(label.sprite);
+    label.sprite.position.set(proto.position[0], yBase + visual.labelHeight, proto.position[2]);
+    this.exteriorGroup.add(label.sprite);
 
     this.interactables.push({
       id: proto.id,
       type: 'prototype',
-      position: new THREE.Vector3(proto.position[0], 0, proto.position[2]),
+      position: new THREE.Vector3(proto.position[0], yBase + 0.08, proto.position[2]),
       radius: 4.5,
       label,
       visual,
@@ -478,16 +614,25 @@ export class World {
    * Single entry point for mission guidance. The current target comes from the
    * same objective calculation as the HUD, so world and HUD cannot diverge.
    */
-  setMissionMarkers({ currentId = null, scans = [], samples = [], reports = [] } = {}) {
-    const signature = `${currentId ?? ''}|${scans.join(',')}|${samples.join(',')}|${reports.join(',')}`;
+  setMissionMarkers({ currentId = null, scans = [], samples = [], reports = [], reportQueue = [] } = {}) {
+    const signature = `${currentId ?? ''}|${scans.join(',')}|${samples.join(',')}|${reports.join(',')}|${reportQueue.join(',')}`;
     if (signature === this.missionMarkerSignature) return;
     this.missionMarkerSignature = signature;
     this.currentMissionTarget = currentId;
     const reported = new Set(reports);
+    const queued = new Set(reportQueue);
     const sampled = new Set(samples);
 
     for (const poi of POIS) {
-      const state = reported.has(poi.id) ? 'reported' : sampled.has(poi.id) ? 'sampled' : 'pending';
+      // A report waiting for the relay pass still means the site is surveyed:
+      // it must never fall back to the unscanned state.
+      const state = reported.has(poi.id)
+        ? 'reported'
+        : queued.has(poi.id)
+          ? 'queued'
+          : sampled.has(poi.id)
+            ? 'sampled'
+            : 'pending';
       this.missionStates.set(poi.id, state);
       const current = currentId === poi.id;
       this.poiVisuals.get(poi.id)?.setMissionState(state, current);
@@ -526,6 +671,7 @@ export class World {
       scans: this.sim.state.scans,
       samples: this.sim.state.samples,
       reports: this.sim.state.reports,
+      reportQueue: this.sim.state.reportQueue.map((item) => item.poiId),
     });
   }
 
@@ -537,6 +683,9 @@ export class World {
     if (state === 'reported') {
       status = 'REPORT SENT';
       accent = '#6ee7a8';
+    } else if (state === 'queued') {
+      status = 'QUEUED';
+      accent = '#ffb347';
     } else if (state === 'sampled') {
       status = 'SAMPLE READY · TAKE TO COMMS';
       accent = '#ffb347';
@@ -556,7 +705,7 @@ export class World {
   }
 
   getPoi(id) {
-    return POIS.find((poi) => poi.id === id) ?? null;
+    return this.pois.find((poi) => poi.id === id) ?? null;
   }
 
   getMachineWorldPosition(id) {
@@ -723,7 +872,8 @@ export class World {
       door.update(this.astronaut.group.position.x, this.astronaut.group.position.z, dt);
     }
 
-    this.astronaut.setGroundY(outside ? -0.06 : 0);
+    const playerPos = this.astronaut.group.position;
+    this.astronaut.setGroundY(outside ? this.getTerrainHeight(playerPos.x, playerPos.z) - 0.06 : 0);
     this.astronaut.setPickaxeEquipped(pickaxeEquipped);
     this.astronaut.update(dt, moving, sprinting ? 1.5 : 1, Boolean(mineTarget));
     this.nearestId = nearest?.id ?? null;
@@ -749,7 +899,7 @@ export class World {
         visual.setState?.(view, sim);
       }
       // POI labels.
-      for (const poi of POIS) {
+      for (const poi of this.pois) {
         const state = this.missionStates.get(poi.id) ?? 'pending';
         this._updatePoiLabel(poi, state, this.currentMissionTarget === poi.id);
       }
@@ -759,9 +909,23 @@ export class World {
     for (const visual of this.machineVisuals.values()) visual.update?.(dt, sim);
     this.holo?.update?.(dt);
     this.iceMelter?.update?.(dt, sim);
+    if (this.solarCableMat) {
+      const solarView = sim.machineView('solar_array');
+      const broken = !solarView || solarView.condition <= 0 || !solarView.enabled;
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+      if (broken) {
+        this.solarCableMat.color.setHex(COLORS.red);
+        this.solarCableMat.emissive.setHex(COLORS.red);
+        this.solarCableMat.emissiveIntensity = 0.35 + pulse * 0.65;
+      } else {
+        this.solarCableMat.color.setHex(COLORS.amber);
+        this.solarCableMat.emissive.setHex(COLORS.amber);
+        this.solarCableMat.emissiveIntensity = sim.isDay ? 0.55 + pulse * 0.55 : 0.18;
+      }
+    }
 
     // POI scan progress and flags.
-    for (const poi of POIS) {
+    for (const poi of this.pois) {
       const visual = this.poiVisuals.get(poi.id);
       if (!visual) continue;
       const scanned = sim.state.scans.includes(poi.id);
@@ -782,7 +946,7 @@ export class World {
     }
 
     // Mineral vein mining progress.
-    for (const vein of MINERAL_VEINS) {
+    for (const vein of this.mineralVeins) {
       const visual = this.veinVisuals.get(vein.id);
       if (!visual) continue;
       const progress = mineTarget === vein.id ? mineProgress : 0;

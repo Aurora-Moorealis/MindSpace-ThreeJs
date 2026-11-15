@@ -12,6 +12,7 @@ const policy = process.argv[2] ?? 'basic';
 
 const sim = new GameSim();
 const report = [];
+let foodMin = sim.state.resources.food;
 
 function log() {
   const s = sim.state;
@@ -61,6 +62,14 @@ for (let i = 0; i < 300; i += 1) {
       if (row.state.status === 'ready') sim.claimSubmission(row.id);
     }
 
+    // Hydroponic trays: harvest mature crops, then plant every empty tray.
+    for (const row of sim.getCropRows()) {
+      if (row.mature) sim.harvestTray(row.index);
+    }
+    for (const row of sim.getCropRows()) {
+      if (row.empty) sim.plantTray(row.index);
+    }
+
     // Repairs and upgrades.
     for (const row of sim.getMachineRows()) {
       if (row.machine.job) continue;
@@ -95,6 +104,7 @@ for (let i = 0; i < 300; i += 1) {
   if (tick % 24 === 0) log();
   sim.tick();
   sim.drainNotifications();
+  foodMin = Math.min(foodMin, sim.state.resources.food);
   if (sim.state.over) break;
 }
 
@@ -102,4 +112,5 @@ log();
 console.log(`Policy: ${policy}`);
 console.log(`Outcome: ${sim.state.over ?? 'running'} (${sim.state.cause ?? '—'}) at tick ${sim.state.tick}`);
 console.log(`Reports: ${sim.state.reports.length}/3 · contracts ${sim.log.count(LOG_TYPES.SUBMISSION_CLAIMED)}/4 · dose ${sim.state.radiation.toFixed(1)} · health ${sim.state.health.toFixed(1)}`);
+console.log(`Food: min ${foodMin.toFixed(1)} · harvests ${sim.state.stats.harvests}`);
 console.table(report);

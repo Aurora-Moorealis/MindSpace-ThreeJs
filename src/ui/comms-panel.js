@@ -69,13 +69,14 @@ export class CommsPanel {
           <div class="comms-title">
             <div class="comms-logo">${icon('comms', 22)}</div>
             <div>
-              <div class="modal-eyebrow">DEEP SPACE NETWORK · OUTPOST LUNAR</div>
+              <div class="modal-eyebrow">DEEP SPACE NETWORK · MINDSPACE</div>
               <h2>COMMUNICATIONS</h2>
             </div>
           </div>
           <div class="comms-status">
             <div class="comms-clock">${formatMissionTime(sim.state.tick)}</div>
             <div class="comms-link" id="comms-link"></div>
+            <button class="link-btn" data-glossary="dsn" aria-label="Glossary: Deep Space Network">${STRINGS['comms.glossary']}</button>
           </div>
           <button class="modal-close" data-action="close" aria-label="Close">${icon('close', 20)}</button>
         </header>
@@ -137,6 +138,9 @@ export class CommsPanel {
       sim.state.scans.join(','),
       sim.state.samples.join(','),
       sim.state.reports.join(','),
+      sim.state.reportQueue.length,
+      sim.state.reportQueue.map((row) => `${row.poiId}:${row.queuedTick}`).join(','),
+      sim.nextRelayTick(),
       sim.getSubmissionRows().map((row) => row.state.status).join(','),
       sim.getForecast().map((row) => `${row.id}:${row.inTicks}`).join(','),
       active.map((row) => `${row.id}:${row.remaining}`).join(','),
@@ -151,9 +155,10 @@ export class CommsPanel {
     if (clock) clock.textContent = formatMissionTime(sim.state.tick);
     const link = this.node.querySelector('#comms-link');
     if (link) {
+      const rtt = STRINGS['comms.rtt'] ?? `${ECONOMY.comms.lightDelayRoundTripSeconds} s round trip`;
       link.innerHTML = sim.isCommsOutage()
         ? `<span class="link-status outage">${icon('alert', 12)} DSN OUTAGE</span>`
-        : `<span class="link-status ok">${icon('check', 12)} LINK OK</span>`;
+        : `<span class="link-status ok">${icon('check', 12)} LINK OK · ${escapeHtml(rtt)}</span>`;
     }
     if (!force && sig === this.signature) return;
     this.signature = sig;
@@ -163,9 +168,10 @@ export class CommsPanel {
 
   _renderNavBadges(sim) {
     const samples = sim.state.samples.length;
+    const queued = sim.state.reportQueue.length;
     const ready = sim.getSubmissionRows().filter((row) => row.state.status === 'ready').length;
     const badges = {
-      reports: samples || '',
+      reports: samples + queued || '',
       contracts: ready || '',
       forecast: sim.isCommsOutage() ? '!' : '',
       supplies: sim.state.supply.pending ? '…' : '',
@@ -202,6 +208,25 @@ export class CommsPanel {
 
   _reports(sim) {
     const rows = sim.getPoiRows();
+    const queue = sim.state.reportQueue;
+    const relay = sim.getRelayStatus();
+    const countdown =
+      relay.inTicks > 0
+        ? (STRINGS['comms.passIn'] ?? 'in {n} h').replace('{n}', relay.inTicks)
+        : STRINGS['comms.passNow'] ?? 'open now';
+    const poiName = (id) => {
+      const poi = rows.find((row) => row.id === id);
+      return poi ? STRINGS[poi.nameKey] : id;
+    };
+    const queueRows = queue
+      .map((item) => {
+        const queuedAt = STRINGS['comms.queuedAt'].replace('{tick}', String(item.queuedTick).padStart(3, '0'));
+        return `<div class="relay-queue-row">
+          <span class="relay-queue-poi">${icon('report', 13)} ${escapeHtml(poiName(item.poiId))}</span>
+          <span class="relay-queue-time">${escapeHtml(queuedAt)}</span>
+        </div>`;
+      })
+      .join('');
     return `
       <div class="content-head">
         <div>
@@ -211,18 +236,42 @@ export class CommsPanel {
         </div>
         <div class="content-badge">${icon('report', 18)} ${sim.state.samples.length} sample${sim.state.samples.length === 1 ? '' : 's'} aboard</div>
       </div>
+      <div class="relay-queue">
+        <div class="relay-queue-head">
+          <strong>${STRINGS['comms.queueTitle']}</strong>
+          <span class="relay-countdown">${icon('clock', 12)} ${STRINGS['comms.nextPass']} ${countdown}</span>
+        </div>
+        ${queue.length ? queueRows : `<div class="relay-queue-empty muted">${STRINGS['comms.queueEmpty']}</div>`}
+        ${
+          relay.outage
+            ? `<div class="relay-queue-note">${icon('alert', 12)} ${STRINGS['comms.outageQueue']}</div>`
+            : ''
+        }
+        <div class="relay-queue-note">${STRINGS['comms.lightNote']}</div>
+      </div>
       <div class="report-list">
         ${rows
           .map((poi) => {
-            const status = poi.reported ? 'sent' : poi.sampled ? 'ready' : poi.scanned ? 'scanned' : 'unscanned';
+            const queued = !poi.reported && queue.some((item) => item.poiId === poi.id);
+            const status = poi.reported
+              ? 'sent'
+              : queued
+                ? 'queued'
+                : poi.sampled
+                  ? 'ready'
+                  : poi.scanned
+                    ? 'scanned'
+                    : 'unscanned';
             const statusLabel =
               status === 'sent'
                 ? 'REPORT SENT'
-                : status === 'ready'
-                  ? 'SAMPLE READY'
-                  : status === 'scanned'
-                    ? 'NO SAMPLE'
-                    : 'NOT SURVEYED';
+                : status === 'queued'
+                  ? STRINGS['comms.queued']
+                  : status === 'ready'
+                    ? 'SAMPLE READY'
+                    : status === 'scanned'
+                      ? 'NO SAMPLE'
+                      : 'NOT SURVEYED';
             return `<article class="report-card ${status}">
               <div class="report-index">${poi.code}</div>
               <div class="report-copy">
@@ -241,6 +290,11 @@ export class CommsPanel {
                     ? `<div class="report-sent-line">${icon('check', 13)} ${escapeHtml(STRINGS[poi.reportKey])} delivered to Mission Control.</div>`
                     : ''
                 }
+                ${
+                  queued
+                    ? `<div class="report-queued-line">${icon('clock', 13)} ${STRINGS['comms.waitingPass']}</div>`
+                    : ''
+                }
               </div>
               <div class="report-action">
                 ${
@@ -251,7 +305,9 @@ export class CommsPanel {
                       )} Send report</button>`
                     : poi.reported
                       ? `<span class="done-mark">${icon('check', 18)}</span>`
-                      : `<span class="muted">Scan Site ${poi.code} first</span>`
+                      : queued
+                        ? `<span class="muted">${icon('clock', 14)} ${countdown}</span>`
+                        : `<span class="muted">Scan Site ${poi.code} first</span>`
                 }
               </div>
             </article>`;
@@ -448,6 +504,11 @@ export class CommsPanel {
     this.node.querySelector('[data-action="close"]')?.addEventListener('click', () => this.close());
     this.node.querySelector('.modal-backdrop')?.addEventListener('click', () => this.close());
     this.node.addEventListener('click', (event) => {
+      const glossary = event.target.closest('[data-glossary]');
+      if (glossary) {
+        this.callbacks.onGlossary?.(glossary.dataset.glossary);
+        return;
+      }
       const button = event.target.closest('[data-action]');
       if (!button) return;
       if (button.dataset.action === 'send-report') this.callbacks.onSendReport?.(button.dataset.poi);

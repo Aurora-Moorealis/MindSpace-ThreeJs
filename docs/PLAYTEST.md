@@ -9,8 +9,8 @@ npm run check
 Ejecuta:
 
 1. `npm run audit` — valida datos, fuentes y presets.
-2. `npm test` — 51 tests de simulación, economía, radiación, contratos,
-   presets y evaluación.
+2. `npm test` — suite de simulación, economía, radiación, comunicaciones,
+   hidroponía, contratos, glosario, guardado y evaluación.
 3. `npm run build` — build de Vite.
 
 También hay una simulación de políticas de juego sin DOM:
@@ -20,8 +20,9 @@ node scripts/balance.mjs basic
 node scripts/balance.mjs idle
 ```
 
-La política `basic` escanea, envía informes, repara y limpia paneles; la `idle`
-no hace nada y muere por la cascada de O₂. Sirve para comparar el tuning.
+La política `basic` escanea, envía informes, planta y cosecha bandejas, repara y
+limpia paneles; la `idle` no hace nada y muere por la cascada de O₂. Sirve para
+comparar el tuning.
 
 ## Smoke test en navegador
 
@@ -64,7 +65,8 @@ con `sim.tick()` y espera de más en las transiciones.
 
 - [x] O₂, agua, comida y energía se mueven con el tick y muestran deltas.
 - [x] El sistema de O₂ produce O₂ consumiendo agua y energía.
-- [x] El reciclador produce agua; la hidroponía produce comida y O₂.
+- [ ] El reciclador produce agua; la hidroponía produce O₂ de forma continua.
+- [ ] La hidroponía no produce comida por tick: la comida llega al cosechar.
 - [x] La batería define la capacidad; el distribuidor permite toggles.
 - [x] La escalera de apagado respeta luces → hidroponía → reciclador → O₂.
 - [x] Reparar cuesta energía y 2 horas; la mejora de herramientas lo acelera.
@@ -76,11 +78,12 @@ con `sim.tick()` y espera de más en las transiciones.
 ### Radiación y eventos
 
 - [x] La primera ventana DONKI empieza temprano y muestra su banner/fuente.
-- [x] La dosis no decrece; el HUD muestra el tope de salud al pasar 30.
+- [ ] La dosis no decrece; el HUD muestra el tope de salud al pasar 30 puntos
+      (75 mSv).
 - [x] El refugio cerrado reduce la dosis; el exterior es peligroso.
 - [x] El polvo solar reduce la producción y se limpia fuera con dosis.
-- [x] Las averías de máquina se reparan; los cortes de DSN bloquean previsión y
-      suministros, no informes.
+- [ ] Las averías de máquina se reparan; los cortes de DSN bloquean previsión y
+      suministros, y suspenden los pases sin perder la cola.
 - [x] Los eventos simulados muestran el badge `SIMULATED`.
 
 ### Misión y evaluación
@@ -88,12 +91,62 @@ con `sim.tick()` y espera de más en las transiciones.
 - [x] Los 3 POIs se escanean con barra de 3 s; moverse cancela.
 - [x] Las muestras se convierten en informes solo en la consola.
 - [x] Los 4 contratos se evalúan y se reclaman en la consola.
-- [x] Con 3 informes aparece la evaluación de victoria.
-- [x] La derrota por O₂/radiación/inanición/reloj también evalúa.
+- [ ] Con 3 informes transmitidos aparece la evaluación de victoria.
+- [ ] La derrota por O₂/límite de dosis/inanición/reloj también evalúa.
 - [x] La evaluación muestra 5 contadores, nota, timeline y fuentes NASA.
 - [x] "Continue (freeplay)" reanuda la partida tras la victoria.
 - [x] "Run it again" reinicia sin intro/tutorial.
 - [x] Los presets mid/final cargan y validan sus invariantes.
+
+### Ciencia, relay y cultivos
+
+Estos pasos cubren el cambio `improve-science-accuracy`; se dejan sin marcar
+hasta verificarlos en la build final.
+
+- [ ] Dosis en dos unidades: en partida, el HUD muestra los puntos y su
+      equivalente en mSv, la tasa en mSv/h y el detalle `1 punto = 2,5 mSv` con
+      los umbrales 30/70/100 = 75/175/250 mSv.
+- [ ] Límite de dosis: llevar la dosis a 100 y comprobar que la evaluación
+      describe un aborto médico por el límite de 250 mSv y no una muerte por
+      radiación.
+- [ ] Plantar: abrir la hidroponía, comprobar que muestra 3 bandejas y plantar
+      una bandeja vacía; debe descontar agua y energía, no entregar comida al
+      plantar y mostrar etapa, tiempo restante y rendimiento esperado.
+- [ ] Madurar: dejar correr el reloj hasta la cosecha y comprobar que el cultivo
+      pasa por las 4 etapas y que la bandeja madura permanece disponible sin
+      perder rendimiento.
+- [ ] Cosechar: pulsar Harvest y comprobar que la comida sube en el rendimiento
+      mostrado (10 base, ajustado por mejoras) y que la bandeja queda vacía.
+- [ ] Pausa del crecimiento: apagar o averiar la hidroponía y comprobar que el
+      tiempo se detiene sin destruir el cultivo; al repararla, continúa desde la
+      misma etapa.
+- [ ] Compresión del cultivo: el panel indica ~28 días reales frente a 30 horas
+      de juego y deja claro que es una simplificación didáctica.
+- [ ] Cola de informes: enviar un informe y comprobar que aparece `QUEUED`, que
+      el contador de enviados no cambia y que la consola muestra la cuenta atrás
+      hasta el pase.
+- [ ] Pase de relay: esperar el pase (cada 4 h de juego: ticks 2, 6, 10…) y
+      comprobar que todos los informes en cola se transmiten juntos, que la cola
+      queda vacía y que el contador sube.
+- [ ] Corte de DSN: con un corte activo en el tick de un pase, comprobar que no
+      se transmite nada, que la cola se conserva y que el primer pase tras el
+      corte la vacía.
+- [ ] Victoria en el pase: con el tercer informe en cola, comprobar que la
+      partida sigue en curso y que termina en victoria cuando se transmite.
+- [ ] Retardo de la luz: la consola muestra 1,28 s por sentido y 2,56 s ida y
+      vuelta, y explica que la base no se controla en tiempo real.
+- [ ] Glosario desde la pausa: abrirlo, leer una entrada, usar `See also` y
+      volver; el reloj sigue en pausa.
+- [ ] Glosario desde el tutorial: abrirlo y volver al mismo paso del tutorial.
+- [ ] Enlaces contextuales: los botones de ayuda de dosis, hidroponía y consola
+      abren la entrada correcta del glosario.
+- [ ] Terminología: el HUD dice `MISSION DAY` y no `SOL`; la nota de compresión
+      (29,53 días terrestres) está junto al reloj, en la pausa y en el glosario.
+- [ ] Guardado con cola y cultivos: enviar un informe, plantar una bandeja,
+      recargar y comprobar que la cola, la cuenta atrás y el progreso del
+      cultivo se restauran.
+- [ ] Guardado anterior: cargar un guardado sin cola ni cultivos y comprobar
+      que arranca con ambos vacíos y la partida sigue siendo válida.
 
 ### Guardado, sprint y marcadores
 
@@ -101,8 +154,9 @@ con `sim.tick()` y espera de más en las transiciones.
       `CONTINUE MISSION` con el tick y la posición restaurados.
 - [ ] Pausa y cierre: pausar u ocultar la pestaña escribe la fracción de hora
       en curso.
-- [x] Victoria: enviar el tercer informe deja la tarjeta en `MISSION COMPLETE`;
-      `CONTINUE FREEPLAY` entra en freeplay desde la instantánea de victoria.
+- [ ] Victoria: el pase que transmite el tercer informe deja la tarjeta en
+      `MISSION COMPLETE`; `CONTINUE FREEPLAY` entra en freeplay desde la
+      instantánea de victoria.
 - [x] Derrota: morir en una misión en curso borra el guardado y el título ya no
       ofrece continuar.
 - [x] Nueva misión con guardado: pide confirmación; cancelar lo conserva y
@@ -114,9 +168,10 @@ con `sim.tick()` y espera de más en las transiciones.
       vuelve a la velocidad normal y una pared detiene el sprint.
 - [x] Escaneo con Shift: mantener Shift sin dirección no cancela el escaneo;
       Shift + dirección sí lo cancela.
-- [x] Marcadores: inicio (`NEXT SURVEY` en A, `UNSCANNED` en B/C), tras escanear
-      A (`SAMPLE READY` y consola actual), tras el informe (`REPORT SENT` y B
-      actual) y tras el tercer informe (ningún objetivo actual).
+- [ ] Marcadores: inicio (`NEXT SURVEY` en A, `UNSCANNED` en B/C), tras escanear
+      A (`SAMPLE READY` y consola actual), tras enviar el informe (en cola) y
+      tras el pase (transmitido; B actual) y tras el tercer informe transmitido
+      (ningún objetivo actual).
 - [x] Cargar un guardado con A escaneado deja los marcadores y el HUD apuntando
       a la consola en el mismo instante.
 
@@ -152,6 +207,6 @@ con `sim.tick()` y espera de más en las transiciones.
 - Fecha: 2026-11-15.
 - Navegador: Chromium 1248 headless (SwiftShader) en Linux.
 - Build: Vite 6.4.6, Three.js r170.
-- Resultado: flujo completo sin errores de página; 51 tests en verde; audit en
+- Resultado: flujo completo sin errores de página; 54 tests en verde; audit en
   verde; capturas en `docs/screenshots/`.
 - FPS de software rendering: bajo; no se usa como criterio de rendimiento.

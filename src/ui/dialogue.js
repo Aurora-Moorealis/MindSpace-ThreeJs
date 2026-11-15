@@ -34,13 +34,15 @@ export class DialogueBox {
     this.index = 0;
     this.onComplete = null;
     this.onSkip = null;
+    this.onGlossary = null;
   }
 
-  open({ lines, speaker = 'AURORA', tag = 'MISSION CONTROL', onComplete, onSkip }) {
+  open({ lines, speaker = 'AURORA', tag = 'MISSION CONTROL', onComplete, onSkip, onGlossary }) {
     this.lines = lines;
     this.index = 0;
     this.onComplete = onComplete;
     this.onSkip = onSkip;
+    this.onGlossary = onGlossary;
     this.node = document.createElement('div');
     this.node.className = 'dialogue-shell';
     this.node.innerHTML = `
@@ -52,6 +54,7 @@ export class DialogueBox {
           <div class="dialogue-meta">
             <div class="dialogue-dots" id="dialogue-dots"></div>
             <div class="dialogue-actions">
+              <button class="link-btn" data-action="glossary">GLOSSARY</button>
               <button class="link-btn" data-action="skip">SKIP TUTORIAL</button>
               <button class="btn btn-primary" data-action="next" id="dialogue-next">NEXT ${icon('arrow', 14)}</button>
             </div>
@@ -62,6 +65,7 @@ export class DialogueBox {
     this.host.append(this.node);
     this.node.querySelector('[data-action="next"]').addEventListener('click', () => this.advance());
     this.node.querySelector('[data-action="skip"]').addEventListener('click', () => this.skip());
+    this.node.querySelector('[data-action="glossary"]').addEventListener('click', () => this.onGlossary?.());
     this.render();
     this.node.classList.add('visible');
     return this.node;

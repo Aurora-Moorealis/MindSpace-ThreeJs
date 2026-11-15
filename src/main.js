@@ -29,6 +29,7 @@ import { MachinePanel } from './ui/machine-panel.js';
 import { CommsPanel } from './ui/comms-panel.js';
 import { PauseMenu, ControlsModal, MissionBoardPanel } from './ui/menus.js';
 import { SourcesModal } from './ui/sources-view.js';
+import { GlossaryModal } from './ui/glossary.js';
 import { TitleScreen, IntroScreen, EvaluationScreen } from './ui/screens.js';
 import { DialogueBox } from './ui/dialogue.js';
 import { DebugOverlay } from './ui/debug.js';
@@ -36,6 +37,7 @@ import { loadDemoPreset } from './data/demo-states.js';
 import { MACHINES } from './data/machines.js';
 import { POIS } from './data/pois.js';
 import { MINERALS, NASA_PROTOTYPE_TRUCK } from './data/minerals.js';
+import { randomSeed } from './world/map-gen.js';
 import { STRINGS } from './data/strings.js';
 import { ECONOMY } from './data/economy.js';
 
@@ -110,6 +112,7 @@ let missionBoard;
 let pauseMenu;
 let controlsModal;
 let sourcesModal;
+let glossary;
 let titleScreen;
 let introScreen;
 let evaluationScreen;
@@ -126,8 +129,8 @@ function createLoadingScreen() {
   const node = document.createElement('div');
   node.className = 'loading-screen';
   node.innerHTML = `
-    <div class="loading-mark">OL</div>
-    <div class="loading-title">OUTPOST LUNAR</div>
+    <div class="loading-mark">MS</div>
+    <div class="loading-title">MINDSPACE</div>
     <div class="loading-bar"><div></div></div>
     <div class="loading-detail">INITIALISING ARTEMIS RIDGE · LOADING NASA DATA ARCHIVE</div>
   `;
@@ -139,7 +142,7 @@ function showFatalError(error) {
   node.className = 'loading-screen';
   node.innerHTML = `
     <div class="loading-mark">!</div>
-    <div class="loading-title">OUTPOST LUNAR COULD NOT START</div>
+    <div class="loading-title">MINDSPACE COULD NOT START</div>
     <div class="loading-detail" style="max-width:560px;text-align:center;line-height:1.5">
       ${String(error?.message ?? error).replaceAll('<', '&lt;')}<br><br>
       This game needs a WebGL-capable desktop browser with JavaScript enabled.
@@ -190,7 +193,7 @@ async function boot() {
       wait(6000).then(() => null),
     ]);
 
-    world = new World(stage.scene, sim, models);
+    world = new World(stage.scene, sim, { models });
     for (const light of world.base.lights ?? []) stage.registerInteriorLight(light);
     world.astronaut.setPosition(app.player.x, app.player.z);
 
@@ -220,6 +223,8 @@ async function boot() {
       beginGameplay,
       openComms,
       openMachinePanel,
+      openGlossary,
+      glossary,
       sourcesModal,
       audio,
     };
@@ -243,6 +248,7 @@ function setupUI(screenLayer, drawerLayer) {
     onMenu: () => openPauseMenu(false),
     onSound: toggleMute,
     onSource: openSources,
+    onGlossary: openGlossary,
     onSlot: selectInventorySlot,
   });
 
@@ -254,6 +260,7 @@ function setupUI(screenLayer, drawerLayer) {
 
   sourcesModal = new SourcesModal(overlayLayer);
   controlsModal = new ControlsModal(overlayLayer);
+  glossary = new GlossaryModal(overlayLayer);
 
   machinePanel = new MachinePanel(drawerLayer, {
     onClose: () => {
@@ -317,12 +324,29 @@ function setupUI(screenLayer, drawerLayer) {
       refreshHud();
       audio.play('click');
     },
+    onPlant: (index) => {
+      const result = sim.plantTray(index);
+      if (!result.ok) actionError(result);
+      flushNotifications();
+      machinePanel.refresh(sim);
+      refreshHud();
+      audio.play('click');
+    },
+    onHarvest: (index) => {
+      const result = sim.harvestTray(index);
+      if (!result.ok) actionError(result);
+      flushNotifications();
+      machinePanel.refresh(sim);
+      refreshHud();
+      audio.play('repair');
+    },
     onOpenComms: () => {
       machinePanel.close();
       openComms();
     },
     onSource: openSources,
     onSources: () => openSources(),
+    onGlossary: openGlossary,
   });
 
   commsPanel = new CommsPanel(overlayLayer, {
@@ -338,7 +362,6 @@ function setupUI(screenLayer, drawerLayer) {
       refreshHud();
       updateObjective(true);
       audio.play('report');
-      if (sim.state.over) triggerEnding();
     },
     onClaim: (submissionId) => {
       const result = sim.claimSubmission(submissionId);
@@ -357,6 +380,7 @@ function setupUI(screenLayer, drawerLayer) {
       audio.play('click');
     },
     onSource: openSources,
+    onGlossary: openGlossary,
   });
 
   missionBoard = new MissionBoardPanel(drawerLayer, {
@@ -380,6 +404,7 @@ function setupUI(screenLayer, drawerLayer) {
     },
     onSources: () => openSources(),
     onSound: toggleMute,
+    onGlossary: () => openGlossary(),
   });
 
   titleScreen = new TitleScreen(screenLayer, {
@@ -391,6 +416,16 @@ function setupUI(screenLayer, drawerLayer) {
       audio.unlock();
       startNewGame();
     },
+    onSeedChange: (seed) => {
+      const mapData = world.regenerateExterior(seed);
+      titleScreen.setMapInfo(mapData);
+      audio.play('click');
+    },
+    onRandomSeed: () => {
+      const mapData = world.regenerateExterior(randomSeed());
+      titleScreen.setMapInfo(mapData);
+      audio.play('click');
+    },
     onDemo: (id) => {
       audio.unlock();
       startNewGame({ presetId: id });
@@ -398,6 +433,7 @@ function setupUI(screenLayer, drawerLayer) {
     onSources: () => openSources(),
     onControls: () => controlsModal.open(),
   });
+  if (world?.mapData) titleScreen.setMapInfo(world.mapData);
 
   introScreen = new IntroScreen(screenLayer, {
     onNext: () => advanceIntro(),
@@ -470,6 +506,10 @@ function setupInput() {
     }
     if (event.code === 'Enter' || event.code === 'Space') {
       if (event.repeat) return;
+      if (glossary?.isOpen()) {
+        event.preventDefault();
+        return;
+      }
       if (app.phase === 'title' && !hasBlockingModal()) {
         event.preventDefault();
         if (app.saveInfo) continueMission();
@@ -563,7 +603,8 @@ function setupInput() {
 
 function hasBlockingModal() {
   return Boolean(
-    pauseMenu?.isOpen() ||
+    glossary?.isOpen() ||
+      pauseMenu?.isOpen() ||
       sourcesModal?.isOpen() ||
       controlsModal?.isOpen?.() ||
       evaluationScreen?.isOpen() ||
@@ -600,6 +641,10 @@ function toggleMute() {
 }
 
 function handleEscape() {
+  if (glossary?.isOpen()) {
+    glossary.close();
+    return;
+  }
   if (sourcesModal?.isOpen()) {
     sourcesModal.close();
     return;
@@ -653,7 +698,13 @@ function closePanels() {
   machinePanel?.close();
   commsPanel?.close();
   missionBoard?.close();
+  glossary?.close();
   if (app.panel && app.panel !== 'pause') app.panel = null;
+}
+
+function openGlossary(termId = null) {
+  glossary.open(termId ?? null);
+  audio.play('click');
 }
 
 function openSources(sourceId = null) {
@@ -965,6 +1016,11 @@ function actionError(result) {
     outage: 'The Deep Space Network is down. Try again after the outage.',
     no_sample: 'No sample aboard for that site.',
     already_sent: 'That report has already been sent.',
+    already_queued: 'That report is already waiting for the next relay pass.',
+    occupied: 'That tray already has a crop growing.',
+    empty: 'That tray is empty. Plant a crop first.',
+    off: 'This machine is switched off.',
+    no_water: 'Not enough water for that action.',
     not_ready: 'That contract is not ready to claim yet.',
     claimed: 'That contract has already been claimed.',
     clean: 'The panels are already clean.',
@@ -1088,6 +1144,14 @@ function continueMission() {
         return;
       }
 
+      // The exterior is generated at boot from a random seed; a resumed
+      // mission must rebuild the same terrain the save was taken on.
+      const savedSeed = sim.state.mapSeed;
+      if (savedSeed != null && String(savedSeed) !== String(world.mapData?.seed)) {
+        world.regenerateExterior(savedSeed);
+        titleScreen?.setMapInfo(world.mapData);
+      }
+
       if (!isPlayerPositionUsable(app.player)) {
         const spawn = world.getSpawn();
         app.player = { x: spawn.x, z: spawn.z };
@@ -1160,6 +1224,7 @@ function triggerEnding() {
     scans: sim.state.scans,
     samples: sim.state.samples,
     reports: sim.state.reports,
+    reportQueue: sim.state.reportQueue.map((item) => item.poiId),
   });
   refreshHud();
   notifications.clearBanner();
@@ -1223,6 +1288,7 @@ function goToTitle(initial = false) {
   pauseMenu?.close();
   sourcesModal?.close();
   controlsModal?.close();
+  glossary?.close();
   evaluationScreen?.close();
   introScreen?.destroy();
   dialogue?.close();
@@ -1250,7 +1316,7 @@ function goToTitle(initial = false) {
   if (!initial) audio.play('click');
 }
 
-function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false } = {}) {
+function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false, mapSeed = null } = {}) {
   if (app.transitioning) return;
   app.transitioning = true;
   app.session += 1;
@@ -1266,6 +1332,7 @@ function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false
   pauseMenu?.close();
   sourcesModal?.close();
   controlsModal?.close();
+  glossary?.close();
   evaluationScreen?.close();
   introScreen?.destroy();
   dialogue?.close();
@@ -1281,6 +1348,12 @@ function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false
   }
 
   sim.reset();
+  if (mapSeed != null && String(mapSeed) !== String(world.mapData?.seed)) {
+    world.regenerateExterior(mapSeed);
+    titleScreen?.setMapInfo(world.mapData);
+  }
+  sim.state.mapSeed = world.mapData?.seed ?? null;
+  sim.state.mapBiome = world.mapData?.biome?.name ?? null;
   app.paused = false;
   app.speed = 1;
   sim.state.speed = 1;
@@ -1398,6 +1471,7 @@ function finishIntro() {
     lines,
     onComplete: () => beginGameplay({ silent: false }),
     onSkip: () => beginGameplay({ silent: true }),
+    onGlossary: () => openGlossary(),
   });
   audio.play('event');
 }
@@ -1490,6 +1564,7 @@ function updateObjective(force = false) {
     scans: sim.state.scans,
     samples: sim.state.samples,
     reports: sim.state.reports,
+    reportQueue: sim.state.reportQueue.map((item) => item.poiId),
   });
 }
 
@@ -1497,8 +1572,10 @@ function refreshHud(cachedNearest = undefined) {
   if (!hud || !sim) return;
   const roomId = world.getRoomAt(app.player.x, app.player.z);
   let zoneLabel = 'HABITAT';
-  if (app.outside) zoneLabel = 'LUNAR SURFACE';
-  else if (app.inShelter && sim.state.shelterLocked) zoneLabel = 'STORM SHELTER';
+  if (app.outside) {
+    const biomeName = world.mapData?.biome?.name?.toUpperCase() ?? 'LUNAR SURFACE';
+    zoneLabel = world.mapData?.seed ? `${biomeName} · #${world.mapData.seed}` : biomeName;
+  } else if (app.inShelter && sim.state.shelterLocked) zoneLabel = 'STORM SHELTER';
   else zoneLabel = STRINGS[ROOMS[roomId]?.key] ?? 'HABITAT';
   const suppress = app.phase !== 'game' || app.paused || app.panel;
   const nearest = suppress
@@ -1511,6 +1588,7 @@ function refreshHud(cachedNearest = undefined) {
   app.interaction = nearest ? world.describeInteraction(nearest, { pickaxeEquipped }) : null;
   hud.update(sim, {
     speed: app.speed,
+    time: sim.state.tick + app.tickAccum / ECONOMY.time.realSecondsPerTick,
     presence: sim.presence,
     zone: { label: zoneLabel },
     interaction: app.scan ? null : app.interaction,

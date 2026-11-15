@@ -20,6 +20,63 @@ tuning del juego. Esta política se implementa en:
 El juego **no descarga datos en runtime**. Los enlaces del panel se abren solo
 cuando el jugador hace clic (`target="_blank"`).
 
+## Modelos con unidad real y sus simplificaciones
+
+Tres modelos del juego tienen una unidad o un ciclo real. En los tres, la
+interfaz declara qué parte es dato y qué parte es compresión.
+
+### Dosis: de puntos a mSv
+
+El estado interno mantiene un presupuesto de dosis de **0 a 100 puntos**. La
+interfaz presenta ese presupuesto en milisieverts con una conversión fija:
+
+| Puntos | mSv | Lectura |
+| --- | --- | --- |
+| 1 | 2,5 | conversión declarada |
+| 30 | 75 | empieza a limitarse la salud máxima |
+| 70 | 175 | daño continuo |
+| 100 | 250 | límite de dosis de la misión |
+
+- **Dato real:** las tasas de referencia son las de LRO CRaTER/LND (~0,197
+  mGy/día en órbita lunar; ~0,318 mGy/día en superficie). El límite de 250 mSv
+  es una referencia de dosis de misión (NASA-STD-3001), no una dosis letal.
+- **Simplificación:** el juego comprime 300 horas de misión (fondo lunar y
+  ventanas de radiación) en una barra de 0 a 100 y aplica una conversión lineal
+  de 2,5 mSv por punto. Por eso el presupuesto no equivale a la dosis real de
+  12,5 días en la superficie. No modela espectro de partículas, blindaje por
+  material, dosis por órgano ni respuesta clínica.
+- **Consecuencia:** llegar a 100 puntos termina la partida como **aborto médico
+  por límite de dosis**. La evaluación no lo presenta como muerte por radiación.
+
+La conversión se declara en el HUD, en el detalle de dosis, en la evaluación y
+en el glosario. `npm run audit` comprueba que `deathDose * msvPerPoint` coincide
+con `msvLimit`.
+
+### Cultivo: de 28 días a 30 horas
+
+- **Dato real:** una hoja verde tipo *Veggie* tarda unos **28 días** desde la
+  siembra hasta la cosecha. El cultivo hidropónico crece sin suelo, con agua,
+  luz y nutrientes.
+- **Simplificación:** la hidroponía tiene **3 bandejas**, un ciclo de **30 horas
+  de juego**, **4 etapas** visibles y una cosecha manual de **10 de comida**
+  (ajustada por las mejoras). El ciclo comprime ~22× el real para que se vean
+  varios ciclos en una misión de 300 ticks.
+- **Límite del modelo:** plantar cuesta agua y energía, el crecimiento solo
+  avanza con la máquina encendida y sana, y la máquina ya no produce comida por
+  tick; solo O₂ de forma continua. El panel declara la compresión y el
+  rendimiento antes de cosechar.
+
+### Enlace: retardo real y pases comprimidos
+
+- **Dato real:** la luz tarda **1,28 s** en cada sentido y **2,56 s** ida y
+  vuelta. La base no se puede pilotar en tiempo real.
+- **Simplificación:** los informes se encolan y salen en un pase de relay cada
+  **4 horas de juego** (ticks 2, 6, 10…). Un corte de DSN suspende los pases sin
+  borrar la cola. La victoria exige que el tercer informe se transmita.
+- **Límite del modelo:** un pase real de DSN se planifica con días de antelación
+  y depende de la geometría orbital; el intervalo fijo de 4 h es tuning para que
+  la espera quepa en una sesión.
+
 ## Recursos oficiales del challenge y fuentes externas
 
 > **Snapshot:** página oficial consultada el **2026-11-15**:
@@ -154,7 +211,8 @@ ningún recurso no usado y `npm run check` sigue en verde.
   modelo CRaTER de mínimo solar.
 - Uso: ancla de la dosis de fondo y de la forma en que la radiación se acumula.
   El juego **no** usa estos valores como cifras clínicas: los convierte a un
-  presupuesto de 0-100 para 300 horas.
+  presupuesto de 0-100 para 300 horas y presenta cada punto como 2,5 mSv
+  (100 puntos = 250 mSv).
 
 ### NASA BVAD — Life Support Baseline Values and Assumptions
 
@@ -179,6 +237,11 @@ ningún recurso no usado y `npm run check` sigue en verde.
 Estas filas no llevan URL porque no existe un dato archivado que las respalde:
 
 - Fiabilidad y desgaste de máquinas, costes de reparación y mejoras.
+- La conversión de 2,5 mSv por punto y los umbrales 30/70/100; las tasas
+  CRaTER/LND son reales.
+- El intervalo y la fase de los pases de relay; el retardo de la luz es real.
+- El número de bandejas, las etapas, el ciclo de 30 h y el rendimiento de 10 por
+  cosecha; la referencia de ~28 días es real.
 - Multiplicadores y duración exacta de las ventanas de radiación (la fuente es
   real; el tuning es del juego).
 - Averías de máquina, caídas de producción, picos de consumo y cortes de DSN.
@@ -195,14 +258,21 @@ Se etiquetan como `SIMULATED` en el juego y aparecen como
 - **Recursos**: tasas NASA (kg/día) → unidades 0-100 por tick para que una barra
   se mueva de forma legible en una sesión corta. La UI muestra el porcentaje y
   el panel de la máquina muestra el input/output por hora.
-- **Radiación**: tasas NASA → dosis 0-100 por 300 horas. El umbral 30 y la
-  muerte a 100 son una abstracción. No es un modelo de dosis clínica ni una
+- **Radiación**: tasas NASA → dosis 0-100 por 300 horas, presentada a 2,5 mSv
+  por punto (100 puntos = 250 mSv). Los umbrales 30/70/100 y el aborto por
+  límite de dosis son una abstracción. No es un modelo de dosis clínica ni una
   recomendación de exposición.
+- **Comunicaciones**: el retardo de 1,28 s por sentido es real; los pases cada
+  4 h son una compresión para que la espera sea visible.
+- **Hidroponía**: el ciclo real de ~28 días se comprime a 30 horas de juego y
+  una cosecha rinde 10 de comida.
 - **Energía**: kW/kWh normalizados con la referencia ISS OGS; la capacidad de la
   batería y el reparto son tuning.
 - **Tiempo**: 1 tick = 1 hora de juego = 60 s reales a ×1. La misión dura 300
-  horas (12,5 soles). Los eventos están comprimidos para que una sesión de 20-60
-  minutos vea el arco completo.
+  horas (12,5 días de misión). Un día lunar real dura 29,53 días terrestres; el
+  ciclo del juego está comprimido y la interfaz lo llama **MISSION DAY**. Los
+  eventos están comprimidos para que una sesión de 20-60 minutos vea el arco
+  completo.
 - **NASA no avala este juego.** Los datos se citan; los errores de adaptación
   son nuestros.
 

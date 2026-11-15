@@ -6,7 +6,7 @@
 import { STRINGS } from '../data/strings.js';
 import { getSource } from '../data/sources.js';
 import { MINERALS } from '../data/minerals.js';
-import { ECONOMY, getClockLabel, formatMissionTime } from '../data/economy.js';
+import { ECONOMY, doseMsv, getClockLabel, formatMissionTime } from '../data/economy.js';
 import {
   clamp,
   escapeHtml,
@@ -29,6 +29,12 @@ function deltaClass(value) {
   return 'neutral';
 }
 
+/** Millisievert label for the vital unit line. Whole values drop the trailing ".0". */
+function formatDoseUnit(points) {
+  const msv = Number(doseMsv(points).toFixed(1));
+  return `${msv} mSv`;
+}
+
 export class HUD {
   constructor(root, callbacks = {}) {
     this.root = root;
@@ -45,14 +51,16 @@ export class HUD {
       <div class="hud-scanlines" aria-hidden="true"></div>
       <header class="hud-top">
         <div class="hud-brand">
-          <div class="brand-mark">OL</div>
+          <div class="brand-mark">MS</div>
           <div class="brand-copy">
-            <div class="brand-title">OUTPOST LUNAR</div>
+            <div class="brand-title">MINDSPACE</div>
             <div class="brand-sub">ARTEMIS RIDGE · JUNIOR ASTRONAUT MISSION</div>
           </div>
         </div>
-        <div class="hud-clock" title="One tick is one game hour. At ×1 a tick takes 60 real seconds.">
-          <div class="clock-main"><span id="hud-sol">SOL 1</span><span id="hud-time">06:00</span></div>
+        <div class="hud-clock" title="One tick is one game hour. At ×1 a tick takes 60 real seconds. ${escapeHtml(
+          STRINGS['time.compressionNote']
+        )}">
+          <div class="clock-main"><span id="hud-sol">MISSION DAY 1</span><span id="hud-time">06:00</span></div>
           <div class="clock-sub"><span id="hud-phase">DAYLIGHT</span><span id="hud-tick">T+000H</span></div>
         </div>
         <div class="hud-actions">
@@ -61,6 +69,7 @@ export class HUD {
             <button class="speed-btn" data-speed="5" title="×5 — 12 s per game hour">×5</button>
             <button class="speed-btn" data-speed="10" title="×10 — 6 s per game hour">×10</button>
           </div>
+          <button class="icon-btn" data-action="compact" title="Toggle compact HUD">HUD</button>
           <button class="icon-btn" data-action="pause" title="Pause (P)">${svgIcon('pause', 18)}</button>
           <button class="icon-btn" data-action="sound" title="Mute / unmute (M)">${svgIcon('sound', 18)}</button>
           <button class="icon-btn" data-action="menu" title="Pause menu (Esc)">${svgIcon('menu', 18)}</button>
@@ -80,10 +89,13 @@ export class HUD {
             <div class="vital-track"><div class="vital-fill health"></div><div class="vital-cap"></div></div>
             <div class="vital-value" data-value="health">100</div>
           </div>
-          <div class="vital-row" data-vital="radiation">
-            <div class="vital-label">${svgIcon('radiation', 15)} DOSE</div>
-            <div class="vital-track"><div class="vital-fill radiation"></div><div class="vital-threshold" title="30: maximum health starts to drop"></div></div>
-            <div class="vital-value" data-value="radiation">2.0</div>
+          <div class="vital-row" data-vital="radiation" title="${escapeHtml(STRINGS['dose.scaleNote'])}">
+            <div class="vital-label">
+              ${svgIcon('radiation', 15)} DOSE
+              <button class="src-btn" data-glossary="dose" title="${escapeHtml(STRINGS['dose.glossary'])}" aria-label="Glossary: radiation dose">?</button>
+            </div>
+            <div class="vital-track"><div class="vital-fill radiation"></div><div class="vital-threshold" title="${escapeHtml(STRINGS['dose.threshold30'])}"></div></div>
+            <div class="vital-value" data-value="radiation"><span data-dose-points>2.0</span><small class="vital-unit" data-dose-msv>5 mSv</small></div>
           </div>
           <div class="vital-mini-grid">
             <div class="mini-vital" data-mini="nutrition">
@@ -102,13 +114,13 @@ export class HUD {
               <div class="mini-track"><div class="mini-fill"></div></div>
             </div>
           </div>
-          <div class="dose-rate"><span id="hud-doserate">+0.00 / h</span><span id="hud-zonerad">HABITAT SHIELDED</span></div>
+          <div class="dose-rate"><span id="hud-doserate">0.00 /h · 0.0 mSv/h</span><span id="hud-zonerad">HABITAT SHIELDED</span></div>
         </section>
       </aside>
 
       <aside class="hud-right">
         <section class="panel objective-panel">
-          <div class="panel-heading"><span>${svgIcon('target', 14)} PRIMARY MISSION</span><span class="panel-hint" id="hud-mission-time">SOL 1</span></div>
+          <div class="panel-heading"><span>${svgIcon('target', 14)} PRIMARY MISSION</span><span class="panel-hint" id="hud-mission-time">MISSION DAY 1</span></div>
           <div class="objective-title" id="hud-objective-title">Scan three survey sites</div>
           <div class="mission-pips" id="hud-pips"></div>
           <div class="objective-target" id="hud-objective-target">
@@ -118,7 +130,7 @@ export class HUD {
           </div>
         </section>
 
-        <section class="panel contracts-panel">
+        <section class="panel contracts-panel collapsed">
           <div class="panel-heading"><span>${svgIcon('contract', 14)} CONTRACTS</span><span class="panel-hint" id="hud-contract-count">0/4</span></div>
           <div id="hud-contracts"></div>
         </section>
@@ -209,7 +221,8 @@ export class HUD {
       healthVal: this.root.querySelector('[data-value="health"]'),
       healthFill: this.root.querySelector('[data-vital="health"] .vital-fill'),
       healthCap: this.root.querySelector('[data-vital="health"] .vital-cap'),
-      radVal: this.root.querySelector('[data-value="radiation"]'),
+      dosePoints: this.root.querySelector('[data-dose-points]'),
+      doseUnit: this.root.querySelector('[data-dose-msv]'),
       radFill: this.root.querySelector('[data-vital="radiation"] .vital-fill'),
       minis: Object.fromEntries(
         ['nutrition', 'hydration', 'suit'].map((id) => {
@@ -270,13 +283,25 @@ export class HUD {
     this.refs.invSlots.forEach((slot, index) => {
       slot.node.addEventListener('click', () => this.callbacks.onSlot?.(index));
     });
+    this.root.querySelector('[data-action="compact"]').addEventListener('click', (event) => {
+      const compact = this.root.classList.toggle('hud-compact');
+      event.currentTarget.classList.toggle('active', compact);
+    });
+    this.root.querySelectorAll('.panel-heading').forEach((heading) => {
+      heading.title = 'Click to collapse / expand';
+      heading.addEventListener('click', () => {
+        heading.closest('.panel')?.classList.toggle('collapsed');
+      });
+    });
     this.root.querySelector('[data-action="pause"]').addEventListener('click', () => this.callbacks.onPause?.());
     this.root.querySelector('[data-action="menu"]').addEventListener('click', () => this.callbacks.onMenu?.());
     this.refs.sound.addEventListener('click', () => this.callbacks.onSound?.());
-    this.root.querySelectorAll('.src-btn').forEach((button) => {
+    // Source and glossary badges share one delegated handler.
+    this.root.querySelectorAll('[data-source], [data-glossary]').forEach((button) => {
       button.addEventListener('click', (event) => {
         event.stopPropagation();
-        this.callbacks.onSource?.(button.dataset.source);
+        if (button.dataset.glossary) this.callbacks.onGlossary?.(button.dataset.glossary);
+        else this.callbacks.onSource?.(button.dataset.source);
       });
     });
   }
@@ -353,7 +378,8 @@ export class HUD {
     this.refs.healthCap.style.left = `${clamp(maxHealth, 0, 100)}%`;
     this.refs.healthCap.classList.toggle('hidden', maxHealth >= 99);
     this.refs.maxhp.textContent = `MAX HP ${maxHealth}`;
-    this.refs.radVal.textContent = state.radiation.toFixed(1);
+    this.refs.dosePoints.textContent = state.radiation.toFixed(1);
+    this.refs.doseUnit.textContent = formatDoseUnit(state.radiation);
     this.refs.radFill.style.width = `${clamp(state.radiation, 0, 100)}%`;
     this.refs.radFill.classList.toggle('critical', state.radiation >= 70);
     this.refs.radFill.classList.toggle('warning', state.radiation >= 30 && state.radiation < 70);
@@ -371,13 +397,17 @@ export class HUD {
       refs.fill.classList.toggle('warning', value >= 25 && value < 45);
     }
 
-    this.refs.sol.textContent = `SOL ${sim.sol}`;
-    this.refs.time.textContent = getClockLabel(state.tick);
+    const displayTick = Number.isFinite(ctx.time) ? ctx.time : state.tick;
+    this.refs.sol.textContent = `MISSION DAY ${sim.sol}`;
+    this.refs.time.textContent = getClockLabel(displayTick);
     this.refs.phase.textContent = sim.isDay ? 'DAYLIGHT' : 'LUNAR NIGHT';
     this.refs.phase.classList.toggle('night', !sim.isDay);
     this.refs.tick.textContent = `T+${String(state.tick).padStart(3, '0')}H`;
     const doseRate = sim.getDoseRate();
-    this.refs.doserate.textContent = `${doseRate > 0 ? '+' : ''}${doseRate.toFixed(2)} / h`;
+    const doseRateMsv = doseMsv(doseRate);
+    this.refs.doserate.textContent = `${doseRate > 0 ? '+' : ''}${doseRate.toFixed(2)} /h · ${
+      doseRateMsv > 0 ? '+' : ''
+    }${doseRateMsv.toFixed(1)} mSv/h`;
     this.refs.doserate.classList.toggle('danger', doseRate > 1);
     this.refs.zonerad.textContent =
       ctx.presence?.inShelter && state.shelterLocked

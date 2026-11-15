@@ -130,6 +130,39 @@ export function auditData() {
   if (ECONOMY.radiation.start < 0 || ECONOMY.radiation.start > 100) errors.push('economy.radiation.start out of range');
   if (ECONOMY.radiation.safeDose >= ECONOMY.radiation.deathDose) errors.push('economy.radiation: threshold order');
   if (!SOURCES[ECONOMY.radiation.source]) errors.push('economy.radiation: unknown source');
+  if (!(ECONOMY.radiation.msvPerPoint > 0)) errors.push('economy.radiation: msvPerPoint must be > 0');
+  if (Math.abs(ECONOMY.radiation.deathDose * ECONOMY.radiation.msvPerPoint - ECONOMY.radiation.msvLimit) > 0.001) {
+    errors.push('economy.radiation: msvLimit must equal deathDose * msvPerPoint');
+  }
+
+  if (!ECONOMY.comms) {
+    errors.push('economy: missing comms block');
+  } else {
+    const comms = ECONOMY.comms;
+    if (!(comms.relayIntervalTicks > 0)) errors.push('economy.comms: relayIntervalTicks must be > 0');
+    if (!(comms.relayPhaseTicks >= 0)) errors.push('economy.comms: relayPhaseTicks must be >= 0');
+    if (comms.relayPhaseTicks >= comms.relayIntervalTicks) {
+      errors.push('economy.comms: relayPhaseTicks must be < relayIntervalTicks');
+    }
+    if (!(comms.lightDelayOneWaySeconds > 0)) errors.push('economy.comms: lightDelayOneWaySeconds must be > 0');
+  }
+
+  if (!ECONOMY.hydroponics) {
+    errors.push('economy: missing hydroponics block');
+  } else {
+    const hydro = ECONOMY.hydroponics;
+    if (!(hydro.trays >= 1)) errors.push('economy.hydroponics: trays must be >= 1');
+    if (!(hydro.cycleTicks >= 1)) errors.push('economy.hydroponics: cycleTicks must be >= 1');
+    if (!(hydro.stages >= 1)) errors.push('economy.hydroponics: stages must be >= 1');
+    if (hydro.stages > hydro.cycleTicks) errors.push('economy.hydroponics: stages must be <= cycleTicks');
+    if (!(hydro.yieldFood > 0)) errors.push('economy.hydroponics: yieldFood must be > 0');
+    for (const [res] of Object.entries(hydro.plantCost ?? {})) {
+      if (!RESOURCE_IDS.includes(res)) errors.push(`economy.hydroponics: unknown plant cost ${res}`);
+    }
+  }
+  if (MACHINES.hydroponics?.outputs?.food !== undefined) {
+    errors.push('machine hydroponics: continuous food output must be removed (harvest the trays instead)');
+  }
   if (ECONOMY.time.missionTicks % ECONOMY.time.solTicks !== 0) warnings.push('mission length is not a whole number of sols');
   if (!ECONOMY.power.ladder.includes('o2_system')) errors.push('power ladder must include o2_system');
   if (ECONOMY.power.ladder[ECONOMY.power.ladder.length - 1] !== 'o2_system') {

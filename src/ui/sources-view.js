@@ -53,7 +53,7 @@ export function sourcesMarkup({ focusId = null, compact = false } = {}) {
     </div>
     <div class="sources-footer">
       <div>
-        <strong>Outpost Lunar</strong> is an independent educational game inspired by the
+        <strong>MindSpace</strong> is an independent educational game inspired by the
         NASA Space Apps Challenge “Junior Astronaut Mission Trainer”. It is not an official NASA product.
       </div>
       <div class="sources-footer-links">
