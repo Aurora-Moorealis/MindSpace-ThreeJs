@@ -1055,6 +1055,27 @@ export class GameSim {
     return this.refineHotbarSlot(idx);
   }
 
+  meltIce() {
+    const hotbar = this.state.hotbar ?? [];
+    const idx = hotbar.findIndex((slot) => slot?.type === 'mineral' && slot.id === 'water_ice' && slot.count > 0);
+    if (idx === -1) return { ok: false, reason: 'no_ice' };
+    hotbar[idx].count -= 1;
+    if (hotbar[idx].count <= 0) hotbar[idx] = null;
+    this._recountMinerals();
+    this.state.resources.water = clamp(
+      this.state.resources.water + 12,
+      0,
+      this.getResourceCapacity('water')
+    );
+    this.state.resources.food = clamp(
+      this.state.resources.food + 4,
+      0,
+      this.getResourceCapacity('food')
+    );
+    this.state.iceMeltBoostUntil = this.state.tick + 2;
+    return { ok: true, remaining: this.state.minerals.water_ice ?? 0 };
+  }
+
   sendReport(poiId) {
     const poi = this.poisData.find((p) => p.id === poiId);
     if (!poi) return { ok: false, reason: 'unknown_poi' };

@@ -304,3 +304,16 @@ test('hotbar starts with pickaxe only, rejects when full, and frees slot on drop
   assert.equal(sim.state.hotbar[1], null);
   assert.equal(sim.mineMineral('olivine').ok, true);
 });
+
+test('greenhouse ice melter consumes water_ice and irrigates plants', () => {
+  const sim = new GameSim();
+  sim.state.resources.water = 40;
+  sim.state.resources.food = 50;
+  assert.equal(sim.meltIce().reason, 'no_ice');
+  sim.mineMineral('water_ice');
+  const res = sim.meltIce();
+  assert.equal(res.ok, true);
+  assert.equal(res.remaining, 0);
+  assert.equal(sim.state.resources.water, 52);
+  assert.equal(sim.state.resources.food, 54);
+});

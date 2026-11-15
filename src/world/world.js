@@ -15,6 +15,7 @@ import {
   buildPoi,
   buildMineralVein,
   buildNasaTruck,
+  buildIceMelter,
 } from './machines3d.js';
 import { MACHINES, MISSION_BOARD } from '../data/machines.js';
 import { POIS } from '../data/pois.js';
@@ -194,6 +195,26 @@ export class World {
     this.group.add(holo.group);
     this.colliders.push({ minX: 3.2, maxX: 5.8, minZ: 2.3, maxZ: 4.9 });
     this.holo = holo;
+
+    // Greenhouse Ice Melter connected by liquid pipe to Hydroponics plants.
+    const iceMelter = buildIceMelter();
+    iceMelter.group.position.set(-9.2, 0, -10);
+    this.group.add(iceMelter.group);
+    this.colliders.push({ minX: -10.3, maxX: -8.1, minZ: -10.95, maxZ: -9.05 });
+    const melterLabel = new WorldLabel('ICE MELTER', { worldWidth: 3.4, height: 170, fontSize: 44 });
+    melterLabel.update('ICE MELTER', 'MELT H₂O ICE → PLANTS', '#4de2ff');
+    melterLabel.sprite.position.set(-9.2, iceMelter.labelHeight, -10);
+    this.group.add(melterLabel.sprite);
+    this.iceMelter = iceMelter;
+    this.interactables.push({
+      id: 'ice_melter',
+      type: 'station',
+      stationId: 'ice_melter',
+      position: new THREE.Vector3(-9.2, 0, -10),
+      radius: 3.1,
+      label: melterLabel,
+      visual: iceMelter,
+    });
   }
 
   _buildPois() {
@@ -529,6 +550,16 @@ export class World {
         key: 'E',
       };
     }
+    if (item.id === 'ice_melter') {
+      const iceCount = this.sim.state.minerals?.water_ice ?? 0;
+      return {
+        id: item.id,
+        name: 'Ice Melter (Greenhouse)',
+        action: iceCount > 0 ? 'Melt Water Ice → Plants' : 'Needs Water Ice',
+        hint: iceCount > 0 ? `Carrying ×${iceCount} H₂O Ice · +12% Water, +4% Food` : 'Mine Water Ice outside first',
+        key: 'E',
+      };
+    }
     return {
       id: item.id,
       name: STRINGS['station.mission_board.name'],
@@ -644,6 +675,7 @@ export class World {
     // Machine idle animations.
     for (const visual of this.machineVisuals.values()) visual.update?.(dt, sim);
     this.holo?.update?.(dt);
+    this.iceMelter?.update?.(dt, sim);
 
     // POI scan progress and flags.
     for (const poi of POIS) {

@@ -693,6 +693,31 @@ function handleInteract() {
     audio.play('click');
     return;
   }
+  if (nearest.id === 'ice_melter') {
+    const result = sim.meltIce();
+    if (!result.ok) {
+      notifications.toast({
+        kind: 'warn',
+        title: 'No Water Ice in inventory',
+        body: 'Equip the Pickaxe (1) and mine Water Ice veins outside to feed the greenhouse.',
+        icon: 'water',
+        duration: 3600,
+      });
+      audio.play('error');
+      return;
+    }
+    notifications.toast({
+      kind: 'good',
+      title: 'Ice Melter active → Plants irrigated',
+      body: 'Melted 1 × Water Ice into liquid H₂O (+12% Water, +4% Food to Hydroponics).',
+      sourceId: 'lcross_ice',
+      icon: 'water',
+      duration: 4800,
+    });
+    audio.play('success');
+    refreshHud();
+    return;
+  }
   if (nearest.id === 'comms_console') {
     openComms();
     return;

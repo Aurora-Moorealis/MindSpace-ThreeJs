@@ -1135,3 +1135,82 @@ export function buildNasaTruck(proto) {
     },
   };
 }
+
+export function buildIceMelter() {
+  const group = basePad(2.2, 1.9);
+
+  // Thermal melting drum.
+  const drum = cylinder(0.55, 0.62, 1.35, 16, COLORS.darkMetal);
+  drum.position.set(-0.35, 0.88, 0);
+  group.add(drum);
+
+  // Glowing amber heating coil around the melting chamber.
+  const coil = new THREE.Mesh(
+    new THREE.TorusGeometry(0.61, 0.045, 8, 20),
+    glowMaterial(COLORS.amber)
+  );
+  coil.rotation.x = Math.PI / 2;
+  coil.position.set(-0.35, 0.72, 0);
+  group.add(coil);
+
+  // Translucent cyan liquid reservoir tank.
+  const tankShell = cylinder(0.38, 0.38, 1.1, 14, COLORS.glass, {
+    material: material(COLORS.glass, { transparent: true, opacity: 0.42, roughness: 0.15 }),
+  });
+  tankShell.position.set(0.45, 0.76, 0);
+  group.add(tankShell);
+
+  const liquidCore = cylinder(0.31, 0.31, 0.85, 12, 0x38d9ff, {
+    material: material(0x38d9ff, { emissive: 0x1688b8, emissiveIntensity: 0.7, roughness: 0.2 }),
+  });
+  liquidCore.position.set(0.45, 0.65, 0);
+  group.add(liquidCore);
+
+  // Top ice hopper.
+  const hopper = cylinder(0.46, 0.32, 0.35, 12, COLORS.metal);
+  hopper.position.set(-0.35, 1.72, 0);
+  group.add(hopper);
+
+  // Screen.
+  const screen = standardScreen('ICE MELTER', ['H2O FEEDSTOCK', 'TO HYDROPONICS', 'LCROSS ISRU'], '#4de2ff');
+  screen.position.set(0, 1.18, 0.82);
+  group.add(screen);
+
+  // Liquid delivery pipe connecting Ice Melter -> Hydroponics plants (+X direction).
+  const pipe = cylinder(0.065, 0.065, 2.75, 10, 0x4b7088);
+  pipe.rotation.z = Math.PI / 2;
+  pipe.position.set(2.15, 0.55, 0);
+  group.add(pipe);
+
+  // Translucent flow jacket & animated liquid droplets moving into the plants.
+  const flowBeads = [];
+  const beadMat = glowMaterial(0x52e8ff);
+  for (let i = 0; i < 5; i += 1) {
+    const bead = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6), beadMat);
+    bead.position.set(0.85 + i * 0.52, 0.55, 0);
+    group.add(bead);
+    flowBeads.push({ mesh: bead, phase: i / 5 });
+  }
+
+  const light = statusLight(COLORS.teal, 2.05);
+  light.position.set(-0.35, 2.0, 0);
+  group.add(light);
+
+  return {
+    group,
+    colliders: [{ x: 0, z: 0, w: 2.2, d: 1.9 }],
+    labelHeight: 2.35,
+    update(dt, sim) {
+      const boosting = (sim?.state?.iceMeltBoostUntil ?? -1) > (sim?.state?.tick ?? 0);
+      const flowSpeed = boosting ? 0.95 : 0.38;
+      const t = performance.now() * 0.001;
+      for (const bead of flowBeads) {
+        const p = (t * flowSpeed + bead.phase) % 1;
+        bead.mesh.position.x = 0.85 + p * 2.65;
+        bead.mesh.scale.setScalar(boosting ? 1.25 : 0.85);
+      }
+      liquidCore.scale.y = 0.78 + Math.sin(t * 2.1) * 0.08;
+      light.material.color.setHex(boosting ? COLORS.green : COLORS.teal);
+    },
+  };
+}
