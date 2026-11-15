@@ -181,8 +181,93 @@ export class GameSim {
   }
 
   /** Raw values for tests and the debug overlay. */
-  snapshot() {
+  stateSnapshot() {
     return JSON.parse(JSON.stringify(this.state));
+  }
+
+  /**
+   * Complete, JSON-safe snapshot of a run for local persistence: the mutable
+   * state, the ledger entries and the current interior/exterior presence.
+   */
+  snapshot() {
+    return {
+      state: JSON.parse(JSON.stringify(this.state)),
+      log: this.log.serialize(),
+      presence: { ...this.presence },
+    };
+  }
+
+  /**
+   * Restores a snapshot produced by [method snapshot].
+   *
+   * A malformed or content-incompatible snapshot is rejected instead of being
+   * partially applied. Ids that no longer exist in the current machine, POI or
+   * submission data invalidate the snapshot so a save never resurrects removed
+   * content.
+   */
+  restore(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') return false;
+    if (!this._isValidSnapshotState(snapshot.state)) return false;
+
+    this.state = JSON.parse(JSON.stringify(snapshot.state));
+    this.presence = {
+      outside: Boolean(snapshot.presence?.outside),
+      inShelter: Boolean(snapshot.presence?.inShelter),
+    };
+    this.log.reset();
+    if (Array.isArray(snapshot.log)) this.log.seed(snapshot.log);
+    this.notifications.length = 0;
+    // Upgrade multipliers are derived data: rebuild them from the restored
+    // machine upgrades instead of trusting a serialized copy.
+    this.recomputeStats();
+    return true;
+  }
+
+  /** Shape and content checks used by [method restore]. */
+  _isValidSnapshotState(state) {
+    if (!state || typeof state !== 'object') return false;
+    if (!Number.isInteger(state.tick) || state.tick < 0) return false;
+    if (!this.economy.time.speeds.includes(state.speed)) return false;
+    if (!state.resources || typeof state.resources !== 'object') return false;
+    for (const id of RESOURCE_IDS) {
+      const value = state.resources[id];
+      if (!Number.isFinite(value) || value < 0) return false;
+    }
+    for (const key of ['health', 'radiation', 'nutrition', 'hydration', 'suit', 'dust']) {
+      if (!Number.isFinite(state[key])) return false;
+    }
+    if (!state.machines || typeof state.machines !== 'object') return false;
+    const machineIds = Object.keys(this.machinesData);
+    if (Object.keys(state.machines).length !== machineIds.length) return false;
+    for (const id of machineIds) {
+      const machine = state.machines[id];
+      if (!machine || typeof machine !== 'object') return false;
+      if (!Number.isFinite(machine.condition)) return false;
+      if (typeof machine.enabled !== 'boolean') return false;
+      if (!Array.isArray(machine.upgrades)) return false;
+      if (!Number.isFinite(machine.repairCount)) return false;
+      if (!('job' in machine)) return false;
+    }
+    if (!state.submissions || typeof state.submissions !== 'object') return false;
+    for (const row of this.submissionsData) {
+      const submission = state.submissions[row.id];
+      if (!submission || typeof submission !== 'object') return false;
+      if (!['active', 'ready', 'missed', 'claimed'].includes(submission.status)) return false;
+    }
+    const poiIds = new Set(this.poisData.map((poi) => poi.id));
+    for (const list of [state.scans, state.samples, state.reports]) {
+      if (!Array.isArray(list)) return false;
+      if (list.some((id) => !poiIds.has(id))) return false;
+    }
+    if (!state.supply || typeof state.supply !== 'object') return false;
+    if (!state.toggles || typeof state.toggles !== 'object') return false;
+    if (!state.stats || typeof state.stats !== 'object') return false;
+    if (!state.flags || typeof state.flags !== 'object') return false;
+    if (!Array.isArray(state.firedEvents)) return false;
+    if (!Array.isArray(state.scanLog)) return false;
+    if (state.over !== null && !['victory', 'defeat'].includes(state.over)) return false;
+    if (state.cause !== null && typeof state.cause !== 'string') return false;
+    return true;
   }
 
   activeEvents() {

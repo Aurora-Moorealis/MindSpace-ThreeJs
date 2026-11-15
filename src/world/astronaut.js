@@ -213,10 +213,10 @@ export class Astronaut {
     this.groundY = y;
   }
 
-  update(dt, moving) {
+  update(dt, moving, speedFactor = 1) {
     this.moving = moving;
     const speed = 8.5;
-    if (moving) this.walkPhase += dt * speed;
+    if (moving) this.walkPhase += dt * speed * speedFactor;
     else this.walkPhase += dt * 1.6;
     const swing = moving ? Math.sin(this.walkPhase) * 0.62 : Math.sin(this.walkPhase) * 0.025;
     const armSwing = moving ? Math.sin(this.walkPhase) * 0.5 : Math.sin(this.walkPhase) * 0.02;

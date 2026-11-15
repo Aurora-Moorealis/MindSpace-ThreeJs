@@ -30,8 +30,10 @@ evaluación.
 - **Sin peticiones externas en runtime.** Los datos NASA están embebidos, los
   modelos 3D se sirven como assets locales del build y las fuentes solo se abren
   si el jugador hace clic en un enlace.
-- **Sin guardado.** Recargar la página empieza una partida nueva, como pide el
-  diseño original.
+- **Guardado local automático.** La partida en curso se guarda en el navegador
+  en cada tick y al pausar, y el título ofrece continuarla. Ganar conserva el
+  guardado marcado como completado; perder la misión lo elimina. Los presets de
+  demo no tocan el guardado real.
 - **Dos presets de demo** para ver el arco completo en minutos:
   - *Mid-mission*: un informe entregado, una muestra en la mochila, contratos
     listos y una ventana de radiación a 3 horas de juego.
@@ -65,6 +67,7 @@ una build de Windows.
 | Tecla | Acción |
 | --- | --- |
 | `W A S D` / flechas | Mover a la astronauta |
+| `Shift` (mantener) | Sprint mientras se mueve |
 | `E` | Interactuar, abrir una máquina, empezar un escaneo |
 | `1` / `2` / `3` | Velocidad del reloj ×1 / ×5 / ×10 |
 | `P` | Pausa |
@@ -115,11 +118,23 @@ pero **nunca el envío de informes**.
 
 ### Misión y contratos
 
-- Escanea **3 sitios** exteriores manteniéndote quieta durante 3 segundos.
+- Escanea **3 sitios** exteriores manteniéndote quieta durante 3 segundos. Cada
+  sitio muestra su estado en el mundo: pendiente, muestra lista o informe
+  enviado; el objetivo actual se resalta y coincide con el HUD.
 - Lleva las muestras a la **consola de comunicaciones** y envía **3 informes**.
 - Cuatro contratos opcionales con condiciones fijas; se reclaman en la consola.
-- Al ganar o perder, la **evaluación** muestra cinco contadores y una línea de
-  tiempo con lo que pasó.
+- Al ganar o perder, la **evaluación** muestra cinco contadores, una línea de
+  tiempo y qué pasó con el guardado de la misión.
+
+### Guardado y reanudación
+
+El progreso de la misión se guarda en `localStorage` con la clave
+`outpost-lunar.save.v1`. Al volver al título, la tarjeta de Artemis Ridge indica
+si la misión está en curso o completada y ofrece `CONTINUE MISSION` o
+`CONTINUE FREEPLAY`. Empezar una misión nueva con un guardado existente pide
+confirmación antes de sobrescribirlo. Ganar conserva la partida completada;
+perder una misión en curso borra su guardado, y una derrota posterior en
+freeplay no borra una misión ya ganada.
 
 ### Máquinas
 
@@ -203,7 +218,7 @@ MindSpace-ThreeJs/
 
 ```bash
 npm run audit     # valida ids, rangos, referencias y procedencia
-npm test          # 41 tests de simulación, datos y evaluación
+npm test          # 54 tests de simulación, datos y evaluación
 npm run build     # build de Vite
 npm run check     # audit + tests + build
 ```
