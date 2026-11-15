@@ -150,11 +150,11 @@ Fuentes principales (detalle en [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md)):
 - **NASA ECLSS / ISS OGS** — referencia de generación de O₂ y consumo de agua y
   potencia.
 
-**Recursos oficiales del challenge:** el proyecto usa **DONKI** del tab oficial
-de recursos. No usa OSDR, RadLab, Mars Trek ni los recursos CSA. La comparación
-completa, el estado actual del panel y la tarea pendiente para mostrarlo en el
-juego están en
-[`docs/DATA-SOURCES.md#recursos-oficiales-del-challenge-estado-y-pendiente`](docs/DATA-SOURCES.md#recursos-oficiales-del-challenge-estado-y-pendiente).
+**Recursos oficiales del challenge:** el panel separa **Official challenge
+resource** (DONKI) de **Additional NASA sources** (LRO CRaTER/LND, NASA BVAD,
+ECLSS/ISS OGS) y **Simulated**. La especificación y la tarea pendiente para
+mostrar esa división en el panel están en
+[`docs/DATA-SOURCES.md#recursos-oficiales-del-challenge-y-fuentes-externas`](docs/DATA-SOURCES.md#recursos-oficiales-del-challenge-y-fuentes-externas).
 
 El juego **no hace peticiones de red en runtime**. Los enlaces se abren solo al
 hacer clic. No es un producto oficial de NASA ni está avalado por NASA.

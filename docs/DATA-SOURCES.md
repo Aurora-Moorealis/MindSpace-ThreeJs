@@ -20,76 +20,92 @@ tuning del juego. Esta política se implementa en:
 El juego **no descarga datos en runtime**. Los enlaces del panel se abren solo
 cuando el jugador hace clic (`target="_blank"`).
 
-## Recursos oficiales del challenge (estado y pendiente)
+## Recursos oficiales del challenge y fuentes externas
 
 > **Snapshot:** página oficial consultada el **2026-11-15**:
 > <https://www.spaceappschallenge.org/2026/challenges/junior-astronaut-mission-trainer/?tab=resources>
 >
 > La propia página avisa: *“More resources may be added before the hackathon
-> begins.”* Antes de un envío, volver a comprobarla.
+> begins.”* Si se incorpora un recurso oficial nuevo, se marca como
+> `challenge`; si no se usa, no se lista.
 
-El tab **Resources** del challenge lista estos recursos. Esta es la comparación
-honesta con lo que usa el juego:
+Para el jurado, lo útil no es enumerar los recursos que **no** se usaron: eso se
+deduce de los que sí aparecen. Lo útil es separar el **origen** de cada fuente
+usada en tres grupos visibles:
 
-| Recurso oficial | ¿Lo usa el juego? | Detalle |
-| --- | --- | --- |
-| **NASA Open APIs** — <https://api.nasa.gov/> | **No en runtime** | El juego es offline y no hace HTTP. No se llama a `api.nasa.gov`; los datos DONKI se empaquetaron archivados. |
-| **DONKI** — <https://ccmc.gsfc.nasa.gov/tools/DONKI/> | **Sí** | Base de las 6 ventanas de radiación. Se citan 4 eventos archivados: CME `2024-05-08T22:24:00-CME-001` (1130 km/s), SEP `2024-05-10T14:50:00-SEP-001`, CME `2024-05-09T09:24:00-CME-001` (1330 km/s) y GST `2024-05-10T15:00:00-GST-001` (Kp 9). Filas en `src/data/sources.js` y `src/data/events.js`; enlaces en el panel **Data Sources**. |
-| **OSDR** — <https://osdr.nasa.gov/bio/repo/> | **No** | No se usa. Sería una referencia de biología/salud humana, no una cifra de gameplay. |
-| **RadLab (OSDR)** — <https://visualization.osdr.nasa.gov/radlab/gui/data-api/> | **No** | Es dosimetría de la **ISS**. Para la Luna se usa **LRO CRaTER / LND**, que es la fuente correcta para este escenario. |
-| **Mars Trek** — <https://trek.nasa.gov/mars/> | **No** | El juego es lunar; el diseño descarta Marte en esta edición. |
-| **CSA — STEM/youth resources** — <https://www.asc-csa.gc.ca/eng/youth-educators/resources-stem-and-youth-organizations.asp> | **No** | No se usa. |
-| **CSA — Food production on the Moon** — <https://www.asc-csa.gc.ca/eng/youth-educators/toolkits/food-production/> | **No** | La hidroponía se basa en BVAD; este toolkit podría citarse como nota educativa en el futuro. |
+### 1. Recurso oficial del challenge
 
-Además, el proyecto usa **fuentes NASA que no están en ese tab**:
+- **DONKI** — <https://ccmc.gsfc.nasa.gov/tools/DONKI/>
+- Es el único recurso del tab oficial que el juego usa. Alimenta las 6 ventanas
+  de radiación con 4 eventos archivados:
+  - CME `2024-05-08T22:24:00-CME-001` (1130 km/s, AR 13664, X1.0).
+  - SEP `2024-05-10T14:50:00-SEP-001` (STEREO A, 13-100 MeV).
+  - CME `2024-05-09T09:24:00-CME-001` (1330 km/s).
+  - GST `2024-05-10T15:00:00-GST-001` (Kp 9, tormenta de Gannon).
+- Filas en `src/data/sources.js` y `src/data/events.js`; enlaces en el panel
+  **Data Sources**.
+- En el panel debe llevar el badge **`OFFICIAL CHALLENGE RESOURCE`** y aparecer
+  en el primer grupo.
 
-- **LRO CRaTER / LND** — dosis lunar de referencia.
-- **NASA BVAD** (`NASA/TP-2015-218570/REV2`) — O₂, agua y comida por tripulante/día.
+### 2. Fuentes NASA adicionales (no están en el tab, pero sí se usan)
+
+- **LRO CRaTER / LND** — dosis lunar de referencia; es la fuente correcta para
+  un escenario lunar.
+- **NASA BVAD** (`NASA/TP-2015-218570/REV2`) — O₂, agua y comida por
+  tripulante/día.
 - **NASA ECLSS / ISS OGS** — ratios de soporte vital y potencia.
+- En el panel deben ir en un grupo **`Additional NASA sources`** con el badge
+  **`NASA ARCHIVE`**. Son NASA, pero no salen del tab oficial del challenge.
 
-### Qué muestra el juego hoy (y qué falta)
+### 3. Contenido simulado
 
-El panel **Data Sources** del juego ya muestra las fuentes que se usan, con
-`NASA ARCHIVE` / `SIMULATED`, URL y fecha. **No** compara el proyecto con el tab
-oficial ni declara explícitamente qué recursos del tab **no** se usan. Ese es el
-hueco que hay que cerrar en otra sesión.
+- Ajuste de economía, fiabilidad de máquinas, textos de misión y guion.
+- En el panel va en el grupo **`Simulated`** con el badge **`SIMULATED`**.
 
-No es un problema de mecánica ni de datos: DONKI ya está integrado y citado. Es
-un problema de **alcance y transparencia** para que un juez o un lector sepa, de
-un vistazo, que el proyecto conoce el tab oficial y que no está fingiendo usar
-OSDR, RadLab, Mars Trek o los recursos CSA.
+### Estado actual y tarea para otra sesión
 
-### Tarea pendiente para otra sesión
+El panel ya muestra las fuentes usadas y distingue `NASA ARCHIVE` de
+`SIMULATED`, pero **no separa** el recurso oficial del challenge de las fuentes
+NASA adicionales. La mejora es de presentación, no de mecánica.
 
-- [ ] Añadir al panel **Data Sources** un bloque corto **“Official challenge
-      resources”** con el estado usado/no usado de esta tabla.
-- [ ] Marcar DONKI con un chip tipo **“OFFICIAL CHALLENGE RESOURCE”** (o texto
-      equivalente) para que se vea que sí se usa el tab oficial.
-- [ ] Incluir una nota de alcance: `api.nasa.gov` no se llama en runtime;
-      OSDR, RadLab, Mars Trek y CSA no se usan.
-- [ ] Si se añaden RadLab u OSDR en el futuro, etiquetarlos como **referencias
-      complementarias**, nunca como fuente lunar. RadLab mide ISS; OSDR es
-      biología/salud, no dosis lunar.
-- [ ] Revisar la página oficial antes de un envío: puede haber recursos nuevos.
-- [ ] No cambiar números, eventos ni mecánicas por esta tarea; es una nota de
-      procedencia y alcance. El audit y los tests deben seguir pasando.
+- [ ] En `src/data/sources.js`, añadir un campo de grupo a las fuentes:
+      `group: 'challenge'` para DONKI; `group: 'nasa'` para CRaTER, BVAD,
+      ECLSS/OGS; `group: 'simulated'` para gameplay/mission. Mantener
+      `real_data` y la auditoría de URL/fecha.
+- [ ] En `src/ui/sources-view.js` (`sourcesMarkup`), renderizar **tres grupos
+      en este orden**: `Official challenge resource`, `Additional NASA
+      sources`, `Simulated`.
+- [ ] Usar **`OFFICIAL CHALLENGE RESOURCE`** para DONKI y **`NASA ARCHIVE`**
+      para las fuentes NASA adicionales. No añadir una lista de “recursos no
+      usados”: el panel solo muestra lo que se usa.
+- [ ] Validar en `src/core/audit.js` que toda fuente `group: 'challenge'` tenga
+      `real_data: true`, URL y fecha ISO.
+- [ ] Comprobar el panel a 1280×720 y 1600×900, sin HTTP en runtime.
+- [ ] `npm run check` debe seguir en verde; no cambiar números, eventos ni
+      mecánicas por esta tarea.
 
-**Dónde tocar:** `src/ui/sources-view.js` (`sourcesMarkup`), y si se añaden
-fuentes nuevas, `src/data/sources.js` + `src/core/audit.js`.
+**Dónde tocar:** `src/data/sources.js`, `src/ui/sources-view.js` y
+`src/core/audit.js` si se valida el grupo.
 
 **Texto propuesto para la UI (inglés, como el resto de la interfaz):**
 
 ```text
-Official challenge resources
-Used: DONKI — archived CME / SEP / GST events drive the radiation windows.
-Not used: NASA Open APIs (no runtime HTTP), OSDR, RadLab (ISS dosimetry),
-Mars Trek (this game is lunar), CSA resources.
-Additional NASA sources used: LRO CRaTER / LND, NASA BVAD, ECLSS / ISS OGS.
+Official challenge resource
+DONKI — archived CME / SEP / GST events drive the radiation windows.
+
+Additional NASA sources
+LRO CRaTER / LND — lunar dose reference.
+NASA BVAD — crew consumables.
+ECLSS / ISS OGS — life support and power ratios.
+
+Simulated
+Gameplay balance and mission script.
 ```
 
-**Criterio de aceptación:** el panel muestra el bloque, DONKI aparece como
-recurso oficial usado, los no usados se listan sin ambigüedad, no se afirma que
-RadLab sea una fuente lunar y `npm run check` sigue en verde.
+**Criterio de aceptación:** el panel muestra los tres grupos en ese orden,
+DONKI aparece como recurso oficial del challenge, las fuentes NASA adicionales
+llevan `NASA ARCHIVE`, el contenido de juego lleva `SIMULATED`, no se lista
+ningún recurso no usado y `npm run check` sigue en verde.
 
 ## Fuentes archivadas
 
