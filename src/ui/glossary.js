@@ -56,6 +56,7 @@ export class GlossaryModal {
             <div class="modal-eyebrow">${icon('source', 15)} FIELD TERMS</div>
             <h2>${escapeHtml(STRINGS['glossary.title'])}</h2>
             <p class="modal-sub">${escapeHtml(STRINGS['glossary.subtitle'])}</p>
+            <p class="glossary-note">${escapeHtml(STRINGS['time.modelNote'])}</p>
             <p class="glossary-note">${escapeHtml(STRINGS['time.compressionNote'])}</p>
           </div>
           <button class="modal-close" data-action="close" aria-label="${escapeHtml(

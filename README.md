@@ -86,16 +86,29 @@ En pausa hay una lista de controles, el glosario y acceso a las fuentes de datos
 
 ### El reloj
 
-Un **tick = 1 hora de juego = 60 segundos reales a ×1**. Los multiplicadores
-×5 y ×10 cambian la tasa del tick, nunca `Engine.time_scale` (no aplica aquí,
-pero se mantiene la misma filosofía: la simulación es independiente del render).
-La misión dura **300 ticks** (12,5 días de misión) o termina antes si se
-transmiten los tres informes.
+El reloj del juego es **tiempo de juego comprimido, no tiempo lunar real**. La
+escala es fija: **1 tick = 1 hora de juego = 60 segundos reales a ×1**. Los
+multiplicadores ×5 y ×10 cambian la tasa del tick, nunca `Engine.time_scale`
+(no aplica aquí, pero se mantiene la misma filosofía: la simulación es
+independiente del render).
+
+Un **día de misión** son **24 horas de juego: 12 de luz y 12 de noche**. La
+misión dura **300 horas de juego (12,5 días de misión)** o termina antes si se
+transmiten los tres informes. Un día lunar real dura **29,53 días terrestres**,
+así que el ciclo día/noche del juego no reproduce el calendario lunar: lo
+comprime.
 
 La interfaz llama **MISSION DAY** a cada día de misión y no usa `SOL` como
-etiqueta. Un día lunar real dura **29,53 días terrestres**; el ciclo día/noche
-del juego está comprimido para que una partida quepa en una sesión. La nota de
-compresión aparece junto al reloj, en la pausa y en el glosario.
+etiqueta. La nota de compresión aparece junto al reloj, en la pausa y en el
+glosario.
+
+**Por qué el horario no es real (nota para el jurado).** La compresión es
+intencionada: con un día de 12 horas de luz y 12 de noche, los niños de 7 a 12
+años ven un día completo, entienden la relación causa-efecto entre lo que hacen
+y lo que cambia en la base, y pueden terminar la misión en una sola sesión. No
+es una medida, una predicción ni un calendario operativo. La tabla «en el juego /
+en la realidad / por qué», con el resto de compresiones, está en
+[`docs/DATA-SOURCES.md#política-de-escala`](docs/DATA-SOURCES.md#política-de-escala).
 
 ### Recursos y soporte vital
 

@@ -1,6 +1,8 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
+import { STRINGS } from '../src/data/strings.js';
+
 const outDir = '/tmp/opencode/outpost';
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -32,9 +34,59 @@ page.on('console', (msg) => {
 });
 page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
 
+// The time disclosure is shared by several surfaces; compare the rendered text
+// against the string table so a silent copy change cannot slip through.
+const baseViewport = { width: 1600, height: 900 };
+const captureViewports = [
+  { width: 1280, height: 720 },
+  { width: 850, height: 480 },
+];
+const expectedTimeNotes = [STRINGS['time.modelNote'], STRINGS['time.compressionNote']];
+
+function noteError(label, notes) {
+  if (notes.length !== 2) return `${label}: expected 2 time notes, got ${notes.length}`;
+  if (notes[0] !== expectedTimeNotes[0] || notes[1] !== expectedTimeNotes[1]) {
+    return `${label}: time notes do not match the string table ${JSON.stringify(notes)}`;
+  }
+  return null;
+}
+
+async function screenshot(name, viewport = null) {
+  if (viewport) await page.setViewportSize(viewport);
+  await page.waitForTimeout(160);
+  await nextFrames(2);
+  await page.screenshot({ path: `${outDir}/${name}.png` });
+}
+
+// Key surfaces are captured twice: the 1280x720 desktop size and the 850x480
+// minimum size the HUD was laid out for.
+async function screenshotPair(name) {
+  for (const viewport of captureViewports) {
+    await screenshot(`${name}-${viewport.width}x${viewport.height}`, viewport);
+  }
+  await page.setViewportSize(baseViewport);
+  await page.waitForTimeout(160);
+  await nextFrames(2);
+}
+
 await page.goto(process.env.GAME_URL ?? 'http://127.0.0.1:5173/', { waitUntil: 'networkidle' });
 await page.waitForTimeout(2600);
 await page.screenshot({ path: `${outDir}/01-title.png` });
+const titleTime = await page.evaluate(() => ({
+  meta: document.querySelector('.title-meta')?.textContent ?? '',
+  sideStats: document.querySelector('.side-stats')?.textContent ?? '',
+}));
+if (!titleTime.meta.includes('GAME TIME')) {
+  errors.push(`title: GAME TIME missing from .title-meta (got "${titleTime.meta}")`);
+}
+if (/REAL-TIME/i.test(titleTime.meta)) {
+  errors.push(`title: .title-meta still says REAL-TIME (got "${titleTime.meta}")`);
+}
+if (!titleTime.sideStats.includes('GAME HOURS')) {
+  errors.push(`title: GAME HOURS missing from .side-stats (got "${titleTime.sideStats}")`);
+}
+console.log('title time', titleTime);
+await screenshotPair('title');
 console.log('title', await page.evaluate(() => window.__outpost?.app?.phase));
 
 await page.locator('[data-action="new"]').click();
@@ -95,6 +147,25 @@ if (!hudUnits.dosePoints.trim()) {
   errors.push('hud: dose in points missing');
 }
 console.log('hud units', hudUnits);
+
+// Game time is visible in the HUD and the clock tooltip carries the scale,
+// the real lunar day and the mission length.
+const hudTime = await page.evaluate(() => ({
+  hasLabel: Boolean(document.querySelector('#hud-game-time')),
+  label: document.querySelector('#hud-game-time')?.textContent ?? '',
+  clockTitle: document.querySelector('.hud-clock')?.getAttribute('title') ?? '',
+}));
+if (!hudTime.hasLabel) errors.push('hud: #hud-game-time is missing');
+if (!hudTime.label.includes('GAME TIME')) {
+  errors.push(`hud: #hud-game-time does not say GAME TIME (got "${hudTime.label}")`);
+}
+for (const needle of ['1 tick', '29.53', '300 game hours']) {
+  if (!hudTime.clockTitle.includes(needle)) {
+    errors.push(`hud: .hud-clock title is missing "${needle}"`);
+  }
+}
+console.log('hud time', hudTime);
+await screenshotPair('hud');
 
 // Force several simulation ticks to reach the first storm and show the HUD at work.
 await page.evaluate(() => {
@@ -231,6 +302,31 @@ await page.screenshot({ path: `${outDir}/16-debug.png` });
 await page.keyboard.press('F1');
 await page.waitForTimeout(300);
 
+// Mission board: it repeats the time disclosure and is a reference screen, so
+// it is checked and captured at both target sizes.
+await teleport(-4.5, 7);
+const boardNearest = await page.evaluate(
+  () => window.__outpost.world.getNearestInteractable(window.__outpost.app.player, 3.6)?.id ?? ''
+);
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(800);
+const missionBoard = await page.evaluate(() => ({
+  open: Boolean(document.querySelector('.mission-board')),
+  panel: window.__outpost.app.panel,
+  notes: [...document.querySelectorAll('.mission-board .compression-note')].map((node) =>
+    node.textContent.trim()
+  ),
+}));
+if (!missionBoard.open || missionBoard.panel !== 'mission') {
+  errors.push(`board: mission board did not open from the hub ${JSON.stringify({ boardNearest, missionBoard })}`);
+}
+const boardNoteError = noteError('board', missionBoard.notes);
+if (boardNoteError) errors.push(boardNoteError);
+console.log('mission board', { nearest: boardNearest, ...missionBoard });
+await screenshotPair('board');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(400);
+
 // Pause menu, glossary stacked over it, and sources.
 await page.keyboard.press('Escape');
 await page.waitForTimeout(500);
@@ -239,7 +335,14 @@ const pauseBefore = await page.evaluate(() => ({
   paused: window.__outpost.app.paused,
   tick: window.__outpost.sim.state.tick,
   pauseOpen: Boolean(document.querySelector('.pause-panel')),
+  notes: [...document.querySelectorAll('.pause-panel .compression-note')].map((node) =>
+    node.textContent.trim()
+  ),
 }));
+const pauseNoteError = noteError('pause', pauseBefore.notes);
+if (pauseNoteError) errors.push(pauseNoteError);
+console.log('pause notes', pauseBefore.notes);
+await screenshotPair('pause');
 await page.locator('.pause-actions [data-action="glossary"]').click();
 await page.waitForTimeout(500);
 await page.screenshot({ path: `${outDir}/17b-glossary.png` });
@@ -262,6 +365,13 @@ if (
   errors.push(`glossary: pause/clock not preserved ${JSON.stringify({ pauseBefore, glossaryFromPause })}`);
 }
 console.log('glossary', glossaryFromPause);
+const glossaryNotes = await page.evaluate(() =>
+  [...document.querySelectorAll('.glossary-panel .glossary-note')].map((node) => node.textContent.trim())
+);
+const glossaryNoteError = noteError('glossary', glossaryNotes);
+if (glossaryNoteError) errors.push(glossaryNoteError);
+console.log('glossary notes', glossaryNotes);
+await screenshotPair('glossary');
 await page.keyboard.press('Escape');
 await page.waitForTimeout(400);
 const backToPause = await page.evaluate(() => ({
@@ -612,6 +722,17 @@ if (!defeat.labels.includes('MISSION DAYS')) {
   errors.push(`defeat: MISSION DAYS card missing (${defeat.labels.join(' | ')})`);
 }
 
+// The sprint check teleports to a fixed coordinate, but the procedural map
+// moves the POIs, so it has been failing since before this change. Keep those
+// warnings visible without letting them mask new regressions: everything else,
+// including any page error, is fatal.
+const knownSprintFailure = (error) => error.startsWith('sprint:');
+const fatalErrors = errors.filter((error) => !knownSprintFailure(error));
+
 console.log('\nERRORS:', errors.length);
 for (const error of errors) console.log(' -', error);
+if (fatalErrors.length) {
+  console.log(`\nFAILED: ${fatalErrors.length} fatal error(s)`);
+  process.exitCode = 1;
+}
 await browser.close();

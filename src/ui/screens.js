@@ -52,7 +52,7 @@ export class TitleScreen {
           <div class="title-kicker"><span class="kicker-dot"></span> NASA SPACE APPS · JUNIOR ASTRONAUT MISSION TRAINER</div>
           <h1 class="game-title">MIND<span>SPACE</span></h1>
           <p class="title-tagline">Keep the lunar outpost alive. Finish the science.</p>
-          <div class="title-meta">SOLO · REAL-TIME (1s = 1m) · 4 RESOURCES · 3 SURVEY SITES · NASA DATA</div>
+          <div class="title-meta">${escapeHtml(STRINGS['time.titleMeta'])}</div>
 
           <div class="mission-select">
             <button class="mission-card selected" data-mission="artemis">
@@ -100,7 +100,7 @@ ${saveLine ? `<em class="mission-save-status ${saveClass}">${escapeHtml(saveLine
             <div class="side-eyebrow"><span class="kicker-dot"></span> MISSION BRIEF</div>
             <p>Manage oxygen, water, food and power across five habitat rooms while surveying three lunar sites and transmitting reports.</p>
             <div class="side-stats">
-              <div><strong>300</strong><span>hours</span></div>
+              <div><strong>300</strong><span>${escapeHtml(STRINGS['time.sideHoursLabel'])}</span></div>
               <div><strong>4</strong><span>resources</span></div>
               <div><strong>3</strong><span>reports</span></div>
             </div>
@@ -109,7 +109,7 @@ ${saveLine ? `<em class="mission-save-status ${saveClass}">${escapeHtml(saveLine
             <div class="side-eyebrow"><span class="kicker-dot"></span> ARCHIVED NASA DATA</div>
             <div class="data-line"><span>01</span> DONKI CME / SEP / GST</div>
             <div class="data-line"><span>02</span> LRO CRaTER & BVAD</div>
-            <div class="data-badge">1s = 1 GAME MIN · PAUSE ANYTIME (P)</div>
+            <div class="data-badge">${escapeHtml(STRINGS['time.dataBadge'])}</div>
           </div>
         </aside>
       </div>

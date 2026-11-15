@@ -47,6 +47,11 @@ export class HUD {
   }
 
   _build() {
+    // The clock tooltip carries both the scale and the compression rationale.
+    const clockTitle = escapeHtml(
+      `${STRINGS['time.modelNote']} ${STRINGS['time.compressionNote']}`
+    );
+
     this.root.innerHTML = `
       <div class="hud-scanlines" aria-hidden="true"></div>
       <header class="hud-top">
@@ -57,11 +62,11 @@ export class HUD {
             <div class="brand-sub">ARTEMIS RIDGE · JUNIOR ASTRONAUT MISSION</div>
           </div>
         </div>
-        <div class="hud-clock" title="One tick is one game hour. At ×1 a tick takes 60 real seconds. ${escapeHtml(
-          STRINGS['time.compressionNote']
-        )}">
+        <div class="hud-clock" title="${clockTitle}">
           <div class="clock-main"><span id="hud-sol">MISSION DAY 1</span><span id="hud-time">06:00</span></div>
-          <div class="clock-sub"><span id="hud-phase">DAYLIGHT</span><span id="hud-tick">T+000H</span></div>
+          <div class="clock-sub"><span id="hud-game-time">${escapeHtml(
+            STRINGS['time.gameTimeLabel']
+          )}</span><span id="hud-phase">DAYLIGHT</span><span id="hud-tick">T+000H</span></div>
         </div>
         <div class="hud-actions">
           <div class="speed-group" role="group" aria-label="Time speed">

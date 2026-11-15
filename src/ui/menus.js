@@ -25,7 +25,7 @@ export function controlsMarkup() {
   return `<div class="controls-grid">${CONTROLS.map(
     ([key, label]) => `<div class="control-row"><kbd>${escapeHtml(key)}</kbd><span>${escapeHtml(label)}</span></div>`
   ).join('')}</div>
-  <div class="controls-note">${icon('alert', 13)} Desktop keyboard required. The mission runs in real time; pause before stepping away.</div>`;
+  <div class="controls-note">${icon('alert', 13)} ${escapeHtml(STRINGS['time.controlsNote'])}</div>`;
 }
 
 export class PauseMenu {
@@ -49,6 +49,7 @@ export class PauseMenu {
             <div class="modal-eyebrow">${autoPaused ? 'AUTO-PAUSED' : 'MISSION PAUSED'}</div>
             <h2>${autoPaused ? 'Window lost focus' : 'Paused'}</h2>
             <p class="modal-sub">${autoPaused ? 'The clock stopped when the window lost focus.' : formatMissionTime(sim.state.tick)} · ${scans}/3 scans · ${reports}/3 reports</p>
+            <p class="compression-note">${escapeHtml(STRINGS['time.modelNote'])}</p>
             <p class="compression-note">${escapeHtml(STRINGS['time.compressionNote'])}</p>
           </div>
           <button class="modal-close" data-action="resume" aria-label="Resume">${icon('play', 18)}</button>
@@ -202,6 +203,10 @@ export class MissionBoardPanel {
           <button class="modal-close" data-action="close" aria-label="Close">${icon('close', 20)}</button>
         </header>
         <div class="drawer-body">
+          <div class="drawer-section">
+            <p class="compression-note">${escapeHtml(STRINGS['time.modelNote'])}</p>
+            <p class="compression-note">${escapeHtml(STRINGS['time.compressionNote'])}</p>
+          </div>
           <div class="mission-hero">
             <div class="mission-hero-title">SCIENCE MISSION</div>
             <div class="mission-hero-body">Scan three survey sites on the lunar surface, then send three reports from the comms console. Keep the outpost alive until the reports are away.</div>
