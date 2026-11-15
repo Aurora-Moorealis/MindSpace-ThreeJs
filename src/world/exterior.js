@@ -52,6 +52,7 @@ export class ExteriorBuilder {
     this.group = new THREE.Group();
     this.colliders = [];
     this.dust = null;
+    this.craterDust = null;
     this.animated = [];
     this.moonTexture = makeMoonTexture(this.mapData.seed);
     this.moonTexture.wrapS = THREE.RepeatWrapping;
@@ -160,7 +161,52 @@ export class ExteriorBuilder {
         stone.castShadow = true;
         stone.receiveShadow = true;
         this.group.add(stone);
+        if (stoneSize >= 0.3) this.addCollider(rx, rz, stoneSize * 1.4, stoneSize * 1.4);
       }
+    }
+
+    // Floating lunar regolith / volatile micro-particles rising gently inside each crater bowl.
+    const perCrater = 14;
+    const craterList = this.mapData.craters ?? [];
+    const total = craterList.length * perCrater;
+    if (total > 0) {
+      const positions = new Float32Array(total * 3);
+      const baseHeights = new Float32Array(total);
+      const phases = new Float32Array(total);
+      const riseSpeeds = new Float32Array(total);
+      let idx = 0;
+      for (const c of craterList) {
+        const maxR = c.size * 0.42;
+        for (let k = 0; k < perCrater; k += 1) {
+          const angle = rand() * Math.PI * 2;
+          const dist = Math.sqrt(rand()) * maxR;
+          const px = c.x + Math.cos(angle) * dist;
+          const pz = c.z + Math.sin(angle) * dist;
+          const baseY = -0.06 + (heightAt ? heightAt(px, pz) : 0);
+          positions[idx * 3] = px;
+          positions[idx * 3 + 1] = baseY + rand() * 1.2;
+          positions[idx * 3 + 2] = pz;
+          baseHeights[idx] = baseY;
+          phases[idx] = rand() * Math.PI * 2;
+          riseSpeeds[idx] = 0.16 + rand() * 0.24;
+          idx += 1;
+        }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const particleColor = this.mapData.biome?.id === 'polar_shadow' ? 0xbbe8ff : 0xdde2eb;
+      const mat = new THREE.PointsMaterial({
+        map: this._makeParticleTexture(),
+        size: 0.24,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false,
+        color: particleColor,
+        blending: THREE.AdditiveBlending,
+      });
+      const points = new THREE.Points(geo, mat);
+      this.group.add(points);
+      this.craterDust = { points, baseHeights, phases, riseSpeeds, mat };
     }
   }
 
@@ -179,7 +225,8 @@ export class ExteriorBuilder {
       rock.castShadow = true;
       rock.receiveShadow = true;
       this.group.add(rock);
-      if (r.size > 1.4) this.addCollider(r.x, r.z, r.size * 1.6, r.size * 1.6);
+      const colSize = Math.max(0.55, r.size * 1.45);
+      this.addCollider(r.x, r.z, colSize, colSize);
     }
 
     // A rocky ridge at the far edge.
@@ -368,6 +415,23 @@ export class ExteriorBuilder {
     }
   }
 
+  _makeParticleTexture() {
+    if (this._particleTexture) return this._particleTexture;
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(230,230,235,0.85)');
+    grad.addColorStop(1, 'rgba(230,230,235,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 32, 32);
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    this._particleTexture = t;
+    return t;
+  }
+
   dustParticles() {
     const rand = seededRandom(555);
     const count = 520;
@@ -381,22 +445,8 @@ export class ExteriorBuilder {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const texture = (() => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 32;
-      canvas.height = 32;
-      const ctx = canvas.getContext('2d');
-      const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-      grad.addColorStop(0, 'rgba(230,230,235,0.85)');
-      grad.addColorStop(1, 'rgba(230,230,235,0)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, 32, 32);
-      const t = new THREE.CanvasTexture(canvas);
-      t.colorSpace = THREE.SRGBColorSpace;
-      return t;
-    })();
     const mat = new THREE.PointsMaterial({
-      map: texture,
+      map: this._makeParticleTexture(),
       size: 0.34,
       transparent: true,
       opacity: 0.35,
@@ -411,13 +461,31 @@ export class ExteriorBuilder {
 
   update(dt, storm = 0) {
     for (const fn of this.animated) fn(dt);
+    const timeBase = performance.now() * 0.0006;
+    if (this.craterDust) {
+      const attr = this.craterDust.points.geometry.attributes.position;
+      const arr = attr.array;
+      const { baseHeights, phases, riseSpeeds, mat } = this.craterDust;
+      const count = baseHeights.length;
+      const mul = dt * (1 + storm * 1.4);
+      for (let i = 0; i < count; i += 1) {
+        const idx = i * 3;
+        arr[idx] += Math.sin(timeBase * 1.3 + phases[i]) * dt * 0.12;
+        arr[idx + 1] += riseSpeeds[i] * mul;
+        arr[idx + 2] += Math.cos(timeBase * 1.1 + phases[i]) * dt * 0.12;
+        if (arr[idx + 1] > baseHeights[i] + 1.35) {
+          arr[idx + 1] = baseHeights[i] + 0.05;
+        }
+      }
+      attr.needsUpdate = true;
+      mat.opacity = 0.34 + storm * 0.35;
+    }
     if (this.dust) {
       const attr = this.dust.points.geometry.attributes.position;
       const arr = attr.array;
       const speeds = this.dust.speeds;
       const count = speeds.length;
       const speedMul = dt * (0.6 + storm * 2.4);
-      const timeBase = performance.now() * 0.0006;
       const yStep = dt * 0.08;
       for (let i = 0; i < count; i += 1) {
         const idx = i * 3;
