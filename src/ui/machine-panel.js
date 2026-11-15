@@ -34,6 +34,10 @@ function bar(value, className = '') {
   return `<div class="drawer-bar"><div class="drawer-bar-fill ${className}" style="width:${Math.max(0, Math.min(100, value))}%"></div></div>`;
 }
 
+function fill(template, values) {
+  return String(template ?? '').replace(/\{(\w+)\}/g, (match, key) => (values[key] ?? match));
+}
+
 export class MachinePanel {
   constructor(host, callbacks = {}) {
     this.host = host;
@@ -86,6 +90,7 @@ export class MachinePanel {
       sim.state.suit,
       sim.state.suitJob?.remainingTicks ?? '',
       sim.state.reports.length,
+      (sim.state.crops ?? []).map((crop) => (crop ? crop.progress : '-')).join(','),
       sim.isCommsOutage(),
       sim.state.lastPower.shed.join(','),
       sim.state.toggles.lights,
@@ -145,6 +150,7 @@ export class MachinePanel {
 
           ${this._ratesSection(view, sim)}
           ${this._specialSection(view, sim, world)}
+          ${this._cropsSection(view, sim)}
 
           <div class="drawer-actions">
             ${primary}
@@ -382,6 +388,68 @@ export class MachinePanel {
     return '';
   }
 
+  _cropsSection(view, sim) {
+    if (this.machineId !== 'hydroponics') return '';
+    const cfg = ECONOMY.hydroponics;
+    const rows = sim.getCropRows();
+    const cost = cfg.plantCost;
+    const planted = rows.filter((row) => !row.empty).length;
+    const operational = view.condition > 0 && view.machine.enabled;
+    const canPlant =
+      operational && sim.state.resources.water >= cost.water && sim.state.resources.energy >= cost.energy;
+    const trayRows = rows
+      .map((row) => {
+        const tray = row.index + 1;
+        if (row.empty) {
+          return `<div class="crop-row empty">
+            <div class="crop-copy">
+              <div class="crop-stage">Tray ${tray} · ${escapeHtml(STRINGS['hydro.empty'])}</div>
+            </div>
+            <div class="crop-actions">
+              <button class="btn btn-small btn-secondary" data-action="plant" data-tray="${row.index}" ${
+                canPlant ? '' : 'disabled'
+              }>${icon('nutrition', 13)} ${escapeHtml(STRINGS['hydro.plant'])}</button>
+            </div>
+          </div>`;
+        }
+        const yieldText = fill(STRINGS['hydro.yield'], { n: row.yieldFood });
+        if (row.mature) {
+          return `<div class="crop-row mature">
+            <div class="crop-copy">
+              <div class="crop-stage">Tray ${tray} · ${escapeHtml(STRINGS['hydro.ready'])}</div>
+              <div class="crop-meta"><span>${escapeHtml(yieldText)}</span></div>
+            </div>
+            <div class="crop-actions">
+              <button class="btn btn-small btn-primary" data-action="harvest" data-tray="${row.index}">${icon(
+                'check',
+                13
+              )} ${escapeHtml(STRINGS['hydro.harvest'])}</button>
+            </div>
+          </div>`;
+        }
+        const stage = fill(STRINGS['hydro.stage'], { n: row.stage, total: row.stages });
+        const remaining = fill(STRINGS['hydro.remaining'], { n: row.remainingTicks });
+        return `<div class="crop-row growing">
+          <div class="crop-copy">
+            <div class="crop-stage">Tray ${tray} · ${escapeHtml(stage)}</div>
+            <div class="crop-meta"><span>${escapeHtml(remaining)}</span><span>${escapeHtml(yieldText)}</span></div>
+            ${bar((row.progress / cfg.cycleTicks) * 100, 'good')}
+          </div>
+        </div>`;
+      })
+      .join('');
+    return `<div class="drawer-section crop-section">
+      <div class="section-title"><span>${escapeHtml(STRINGS['hydro.trays'])}</span><span>${planted} / ${
+        rows.length
+      } planted</span></div>
+      ${trayRows}
+      <div class="drawer-note">${escapeHtml(fill(STRINGS['hydro.plantCost'], { water: cost.water, energy: cost.energy }))}</div>
+      <div class="drawer-note">${escapeHtml(STRINGS['hydro.compression'])}
+        <button class="link-btn" data-glossary="hydroponics">${escapeHtml(STRINGS['hydro.glossary'])}</button>
+      </div>
+    </div>`;
+  }
+
   _bind() {
     if (!this.node) return;
     this.node.querySelectorAll('[data-action]').forEach((button) => {
@@ -399,12 +467,20 @@ export class MachinePanel {
         else if (action === 'suit-repair') this.callbacks.onSuitRepair?.();
         else if (action === 'comms') this.callbacks.onOpenComms?.();
         else if (action === 'sources') this.callbacks.onSources?.();
+        else if (action === 'plant') this.callbacks.onPlant?.(Number(button.dataset.tray));
+        else if (action === 'harvest') this.callbacks.onHarvest?.(Number(button.dataset.tray));
       });
     });
     this.node.querySelectorAll('[data-source]').forEach((button) => {
       button.addEventListener('click', (event) => {
         event.stopPropagation();
         this.callbacks.onSource?.(button.dataset.source);
+      });
+    });
+    this.node.querySelectorAll('[data-glossary]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.callbacks.onGlossary?.(button.dataset.glossary);
       });
     });
     const backdrop = this.node.querySelector('.drawer-backdrop');

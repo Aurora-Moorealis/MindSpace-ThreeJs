@@ -54,7 +54,10 @@ export function describeNotification(notification, sim) {
     submission_claimed: 'report',
     submission_missed: 'click',
     scan_complete: 'scan',
+    report_queued: 'click',
     report_sent: 'report',
+    crop_planted: 'click',
+    crop_harvested: 'repair',
     supply_requested: 'click',
     supply_arrived: 'repair',
     low_resource: 'alarm',
@@ -179,6 +182,24 @@ export function describeNotification(notification, sim) {
         sound,
       };
     }
+    case 'report_queued': {
+      const passIn =
+        sim && Number.isFinite(payload.nextRelayTick) ? Math.max(0, payload.nextRelayTick - sim.state.tick) : null;
+      const passText =
+        passIn === null
+          ? 'next relay pass scheduled'
+          : passIn > 0
+            ? `next relay pass in ${passIn} h`
+            : 'next relay pass is open now';
+      return {
+        kind: 'info',
+        title: 'Report queued',
+        body: `${poiName(payload.poiId)} · ${passText}.`,
+        sourceId: 'mission',
+        icon: 'comms',
+        sound,
+      };
+    }
     case 'report_sent':
       return {
         kind: 'good',
@@ -186,6 +207,22 @@ export function describeNotification(notification, sim) {
         body: `${poiName(payload.poiId)} · ${payload.count}/3 reports delivered to Mission Control.`,
         sourceId: 'mission',
         icon: 'report',
+        sound,
+      };
+    case 'crop_planted':
+      return {
+        kind: 'good',
+        title: 'Crop planted',
+        body: `Tray ${Number(payload.tray ?? 0) + 1} is growing. Harvest it when the tray is ready.`,
+        icon: 'food',
+        sound,
+      };
+    case 'crop_harvested':
+      return {
+        kind: 'good',
+        title: 'Harvest collected',
+        body: `Tray ${Number(payload.tray ?? 0) + 1} · food +${payload.food ?? 0}.`,
+        icon: 'food',
         sound,
       };
     case 'supply_requested':

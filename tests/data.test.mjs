@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { auditData } from '../src/core/audit.js';
+import { ECONOMY, doseMsv, formatDose, formatMissionTime, getMissionDay } from '../src/data/economy.js';
 import { EVENTS, EVENT_ARCHETYPES } from '../src/data/events.js';
 import { MACHINES } from '../src/data/machines.js';
 import { POIS } from '../src/data/pois.js';
@@ -97,4 +98,28 @@ test('presets target a radiation window within six hours', () => {
     assert.ok(next, `${preset.id} has no future storm`);
     assert.ok(next.onset - preset.tick <= 6, `${preset.id} storm is too far away`);
   }
+});
+
+test('hydroponics no longer produces food continuously', () => {
+  assert.equal(MACHINES.hydroponics.outputs.food, undefined);
+  assert.equal(MACHINES.hydroponics.crops, true);
+});
+
+test('demo presets carry crop trays', () => {
+  for (const preset of DEMO_PRESETS) {
+    assert.ok(Array.isArray(preset.crops), `${preset.id} has no crops`);
+    assert.equal(preset.crops.length, ECONOMY.hydroponics.trays);
+    assert.ok(preset.crops.some((crop) => crop !== null), `${preset.id} has no growing crop`);
+  }
+});
+
+test('dose and mission time helpers present real units', () => {
+  assert.equal(doseMsv(0), 0);
+  assert.equal(doseMsv(30), 75);
+  assert.equal(doseMsv(70), 175);
+  assert.equal(doseMsv(100), 250);
+  assert.equal(formatDose(3.4), '3.4 · 8.5 mSv');
+  assert.equal(getMissionDay(0), 1);
+  assert.equal(formatMissionTime(0), 'MISSION DAY 1 · 08:00');
+  assert.ok(!formatMissionTime(0).includes('Sol'));
 });

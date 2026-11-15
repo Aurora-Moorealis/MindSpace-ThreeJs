@@ -3,7 +3,7 @@
  * by the evaluation screen. The five required counters are always present.
  */
 
-import { ECONOMY } from '../data/economy.js';
+import { ECONOMY, doseMsv } from '../data/economy.js';
 import { STRINGS } from '../data/strings.js';
 import { MACHINES } from '../data/machines.js';
 import { POIS } from '../data/pois.js';
@@ -73,6 +73,7 @@ export function timelineLabel(entry) {
     case LOG_TYPES.DAMAGE:
       return { icon: 'radiation', text: `Crew damage — ${p.cause ?? 'life support'}` };
     case LOG_TYPES.DEATH:
+      if (p.cause === 'dose_limit') return { icon: 'alert', text: 'Dose limit exceeded — mission aborted' };
       return { icon: 'alert', text: `Mission ended — ${p.cause ?? 'life support failure'}` };
     case LOG_TYPES.VICTORY:
       return { icon: 'check', text: 'All three science reports delivered — mission complete' };
@@ -96,8 +97,11 @@ export function buildEvaluation(sim) {
   const percentages = RESOURCE_IDS.map((id) => sim.getResourcePercent(id));
   const avgResources = percentages.reduce((a, b) => a + b, 0) / percentages.length;
   const peakDose = Math.max(state.stats.peakDose ?? 0, state.radiation);
+  const peakDoseMsv = Number(doseMsv(peakDose).toFixed(1));
+  const safeDoseMsv = Number(doseMsv(ECONOMY.radiation.safeDose).toFixed(1));
   const shelterUses = state.stats.shelterUses ?? 0;
-  const sols = sim.sol;
+  const shelterUsesLabel = `${shelterUses} shelter use${shelterUses === 1 ? '' : 's'}`;
+  const days = sim.sol;
   const ticks = state.tick;
   const victory = state.over === 'victory';
   const timeout = state.cause === 'mission_clock';
@@ -123,17 +127,27 @@ export function buildEvaluation(sim) {
   if (submitted < 2) improve.push('Most contracts went unclaimed. They are free resources when completed.');
   if (avgResources >= 55) wentWell.push(`The outpost ended with an average resource level of ${Math.round(avgResources)}%.`);
   else if (avgResources < 35) improve.push(`Average resources finished at ${Math.round(avgResources)}%. The pantry and tanks were running on fumes.`);
-  if (peakDose < ECONOMY.radiation.safeDose) wentWell.push(`Peak radiation stayed at ${peakDose.toFixed(1)}, below the 30-point health threshold.`);
-  else improve.push(`Peak radiation reached ${peakDose.toFixed(1)}. Above 30, maximum health is permanently capped.`);
+  if (peakDose < ECONOMY.radiation.safeDose) {
+    wentWell.push(
+      `Peak dose stayed at ${peakDose.toFixed(1)} points (${peakDoseMsv} mSv), below the 30-point (${safeDoseMsv} mSv) health threshold.`
+    );
+  } else {
+    improve.push(
+      `Peak dose reached ${peakDose.toFixed(1)} points (${peakDoseMsv} mSv). Above 30 points (${safeDoseMsv} mSv), maximum health is permanently capped.`
+    );
+  }
   if (shelterUses > 0) wentWell.push(`The storm shelter was used ${shelterUses} time${shelterUses === 1 ? '' : 's'} during radiation windows.`);
   else if (state.stats.stormsSurvived > 0) improve.push('The storm shelter was never used. A locked shelter cuts dose dramatically.');
   if (shelterUses === 0 && state.stats.stormsSurvived === 0) improve.push('No radiation windows were survived; check the forecast and shelter earlier.');
   if (broken > 0) improve.push(`${broken} machine${broken === 1 ? ' is' : 's are'} still broken. Repairs cost power but stop a cascade.`);
   if (state.stats.repairs >= 3) wentWell.push(`You completed ${state.stats.repairs} repairs, keeping machines online.`);
-  if (victory) wentWell.push(`Victory in ${ticks} game hours (${sols} sol${sols === 1 ? '' : 's'}).`);
+  if (victory) wentWell.push(`Victory in ${ticks} game hours (${days} mission day${days === 1 ? '' : 's'}).`);
   else if (timeout) improve.push('The 300-hour mission clock expired before the third report.');
   else if (state.cause === 'oxygen') improve.push('Oxygen hit zero and the suit reserve ran out. Repair the O2 system first.');
-  else if (state.cause === 'radiation') improve.push('Accumulated radiation reached 100. Dose never decays; shelter earlier.');
+  else if (state.cause === 'dose_limit')
+    improve.push(
+      `Peak dose reached ${peakDose.toFixed(1)} points (${peakDoseMsv} mSv), the ${ECONOMY.radiation.msvLimit} mSv mission limit. Dose never decays; shelter earlier next run.`
+    );
   else if (state.cause === 'starvation') improve.push('The crew starved. Hydroponics and pantry stock are life support, not optional.');
   else if (state.cause === 'dehydration') improve.push('The crew dehydrated. The water recycler is the only source.');
   else if (state.cause === 'life_support') improve.push('Life support failed. Watch the cascade from energy to O2 to the crew.');
@@ -159,8 +173,8 @@ export function buildEvaluation(sim) {
       ? 'The 300-hour clock expired with the science mission unfinished.'
       : state.cause === 'oxygen'
         ? 'The oxygen reserve ran out before the outpost could recover.'
-        : state.cause === 'radiation'
-          ? 'Accumulated radiation reached the fatal dose.'
+        : state.cause === 'dose_limit'
+          ? `The crew reached the ${ECONOMY.radiation.msvLimit} mSv mission dose limit. The mission was aborted.`
           : state.cause === 'starvation'
             ? 'The crew ran out of food.'
             : state.cause === 'dehydration'
@@ -182,8 +196,9 @@ export function buildEvaluation(sim) {
     contractsReady: ready,
     avgResources,
     peakDose,
+    peakDoseMsv,
     shelterUses,
-    sols,
+    days,
     ticks,
     broken,
     cards: [
@@ -218,14 +233,14 @@ export function buildEvaluation(sim) {
         icon: 'radiation',
         label: 'PEAK DOSE / SHELTER USES',
         value: `${peakDose.toFixed(1)} · ${shelterUses}`,
-        detail: peakDose < 30 ? 'Stayed below the health cap' : 'Maximum health was capped',
+        detail: `${peakDoseMsv} mSv peak (limit ${ECONOMY.radiation.msvLimit} mSv) · ${shelterUsesLabel}`,
         tone: peakDose < 30 ? 'good' : peakDose < 70 ? 'warn' : 'bad',
       },
       {
         id: 'time',
         icon: 'clock',
-        label: 'SOLS ELAPSED',
-        value: `${sols}`,
+        label: 'MISSION DAYS',
+        value: `${days}`,
         detail: `${ticks} game hours · limit ${ECONOMY.time.missionTicks} h`,
         tone: 'neutral',
       },

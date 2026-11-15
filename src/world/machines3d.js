@@ -950,8 +950,14 @@ export function buildPoi(poi) {
     setMissionState(state, current) {
       missionState = state;
       missionCurrent = Boolean(current);
+      // Queued means the site is surveyed and its report is waiting for the
+      // relay pass, so it shares the sampled amber family and pulse.
       const color =
-        state === 'reported' ? COLORS.green : state === 'sampled' ? COLORS.amber : COLORS.teal;
+        state === 'reported'
+          ? COLORS.green
+          : state === 'sampled' || state === 'queued'
+            ? COLORS.amber
+            : COLORS.teal;
       beacon.material.color.setHex(color);
       light.material.color.setHex(color);
       ringMaterialFilled.color.setHex(color);

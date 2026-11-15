@@ -43,12 +43,13 @@ export function formatDelta(value) {
   return `${value > 0 ? '+' : ''}${value.toFixed(1)}`;
 }
 
+/** Duration label in game hours and days, e.g. "3 d 2 h" or "3 d". */
 export function formatTicks(ticks) {
   if (ticks <= 0) return 'now';
   if (ticks < 24) return `${ticks} h`;
-  const sols = Math.floor(ticks / 24);
+  const days = Math.floor(ticks / 24);
   const hours = ticks % 24;
-  return hours ? `${sols} sol ${hours} h` : `${sols} sol`;
+  return hours ? `${days} d ${hours} h` : `${days} d`;
 }
 
 export function sourceBadge(source, { short = false } = {}) {

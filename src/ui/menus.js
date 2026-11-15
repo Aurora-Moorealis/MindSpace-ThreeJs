@@ -47,12 +47,16 @@ export class PauseMenu {
             <div class="modal-eyebrow">${autoPaused ? 'AUTO-PAUSED' : 'MISSION PAUSED'}</div>
             <h2>${autoPaused ? 'Window lost focus' : 'Paused'}</h2>
             <p class="modal-sub">${autoPaused ? 'The clock stopped when the window lost focus.' : formatMissionTime(sim.state.tick)} · ${scans}/3 scans · ${reports}/3 reports</p>
+            <p class="compression-note">${escapeHtml(STRINGS['time.compressionNote'])}</p>
           </div>
           <button class="modal-close" data-action="resume" aria-label="Resume">${icon('play', 18)}</button>
         </header>
         <div class="pause-actions">
           <button class="btn btn-primary" data-action="resume">${icon('play', 16)} Resume mission</button>
           <button class="btn btn-secondary" data-action="sources">${icon('source', 16)} Data sources</button>
+          <button class="btn btn-secondary" data-action="glossary">${icon('source', 16)} ${escapeHtml(
+            STRINGS['glossary.open']
+          )}</button>
           <button class="btn btn-ghost" data-action="sound">${icon(muted ? 'mute' : 'sound', 16)} Sound ${muted ? 'off' : 'on'}</button>
           <button class="btn btn-ghost" data-action="restart">${icon('wrench', 16)} Restart mission</button>
           <button class="btn btn-danger" data-action="menu">${icon('arrow', 16)} Abandon to menu</button>
@@ -71,6 +75,7 @@ export class PauseMenu {
         const action = button.dataset.action;
         if (action === 'resume') this.close(this.callbacks.onResume);
         else if (action === 'sources') this.callbacks.onSources?.();
+        else if (action === 'glossary') this.callbacks.onGlossary?.();
         else if (action === 'sound') this.callbacks.onSound?.();
         else if (action === 'restart') this.callbacks.onRestart?.();
         else if (action === 'menu') this.callbacks.onMenu?.();
