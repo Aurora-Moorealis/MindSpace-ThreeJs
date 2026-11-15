@@ -5,7 +5,7 @@
 
 import { STRINGS } from '../data/strings.js';
 import { getSource } from '../data/sources.js';
-import { MINERAL_ORDER, MINERALS } from '../data/minerals.js';
+import { MINERALS } from '../data/minerals.js';
 import { ECONOMY, getClockLabel, formatMissionTime } from '../data/economy.js';
 import {
   clamp,
@@ -521,56 +521,71 @@ export class HUD {
       }
     }
 
-    // Inventory bar (5 slots: 1 = Lunar Pickaxe, 2-5 = 4 Lunar Minerals).
+    // Inventory bar (5 slots: starts with Pickaxe only; no pre-reserved slots).
     const selectedSlot = ctx.selectedSlot ?? this.selectedSlot ?? 0;
-    const minerals = state.minerals ?? { water_ice: 0, ilmenite: 0, anorthite: 0, olivine: 0 };
-    const invSignature = `${selectedSlot}|${MINERAL_ORDER.map((id) => minerals[id] ?? 0).join(',')}`;
+    const hotbar = state.hotbar ?? [{ type: 'tool', id: 'pickaxe', count: 1 }, null, null, null, null];
+    const invSignature = `${selectedSlot}|${hotbar
+      .map((s) => (s ? `${s.type}:${s.id}:${s.count}` : '-'))
+      .join(',')}`;
     if (invSignature !== this.inventorySignature) {
       this.inventorySignature = invSignature;
-      const items = [
-        {
-          icon: 'pickaxe',
-          label: 'PICKAXE',
-          caption: 'LUNAR PICKAXE · Approach a mineral vein & press [E] to mine',
-          filled: true,
-          count: 0,
-        },
-        ...MINERAL_ORDER.map((id) => {
-          const m = MINERALS[id];
-          const count = minerals[id] ?? 0;
+      const items = hotbar.map((entry) => {
+        if (!entry) return null;
+        if (entry.type === 'tool' && entry.id === 'pickaxe') {
           return {
-            icon: id === 'water_ice' ? 'water' : 'mineral',
+            icon: 'pickaxe',
+            label: 'PICKAXE',
+            caption: 'LUNAR PICKAXE · Approach a mineral vein & press [E] to mine',
+            filled: true,
+            sample: false,
+            count: 0,
+            color: '',
+          };
+        }
+        if (entry.type === 'mineral') {
+          const m = MINERALS[entry.id];
+          if (!m) return null;
+          return {
+            icon: m.id === 'water_ice' ? 'water' : 'mineral',
             label: m.short,
-            caption:
-              count > 0
-                ? `${m.name.toUpperCase()} (${m.formula}) ×${count} · Press [F] to refine (${m.bonus.label})`
-                : `${m.name.toUpperCase()} (${m.formula}) · Mohs ${m.mohs} (${m.mineSeconds.toFixed(1)}s) · 0 carried`,
-            filled: count > 0,
-            sample: count > 0,
-            count,
+            caption: `${m.name.toUpperCase()} (${m.formula}) ×${entry.count} · [F] Refine (${m.bonus.label}) · [Q] Drop`,
+            filled: true,
+            sample: true,
+            count: entry.count,
             color: m.hex,
           };
-        }),
-      ];
+        }
+        return null;
+      });
       this._lastInvItems = items;
       this.refs.invSlots.forEach((slot, i) => {
         const item = items[i];
         slot.node.classList.toggle('active', i === selectedSlot);
-        slot.node.classList.toggle('filled', Boolean(item?.filled));
+        slot.node.classList.toggle('filled', Boolean(item));
         slot.node.classList.toggle('sample', Boolean(item?.sample));
-        slot.icon.innerHTML = svgIcon(item.icon, 20);
-        slot.icon.style.color = item.color ?? '';
-        slot.label.textContent = item.label;
-        if (item.count > 0) {
-          slot.count.textContent = `×${item.count}`;
-          slot.count.classList.remove('hidden');
+        if (item) {
+          slot.icon.innerHTML = svgIcon(item.icon, 20);
+          slot.icon.style.color = item.color ?? '';
+          slot.label.textContent = item.label;
+          if (item.count > 0) {
+            slot.count.textContent = `×${item.count}`;
+            slot.count.classList.remove('hidden');
+          } else {
+            slot.count.textContent = '';
+            slot.count.classList.add('hidden');
+          }
         } else {
+          slot.icon.innerHTML = '';
+          slot.icon.style.color = '';
+          slot.label.textContent = 'EMPTY';
           slot.count.textContent = '';
           slot.count.classList.add('hidden');
         }
       });
       const activeItem = items[selectedSlot];
-      this.refs.invCaption.textContent = `${selectedSlot + 1} · ${activeItem.caption}`;
+      this.refs.invCaption.textContent = activeItem
+        ? `${selectedSlot + 1} · ${activeItem.caption}`
+        : `${selectedSlot + 1} · EMPTY SLOT`;
     }
 
     // Scan/task progress.

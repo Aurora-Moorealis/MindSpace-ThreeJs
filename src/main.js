@@ -33,7 +33,7 @@ import { DebugOverlay } from './ui/debug.js';
 import { loadDemoPreset } from './data/demo-states.js';
 import { MACHINES } from './data/machines.js';
 import { POIS } from './data/pois.js';
-import { MINERAL_ORDER, MINERALS, NASA_PROTOTYPE_TRUCK } from './data/minerals.js';
+import { MINERALS, NASA_PROTOTYPE_TRUCK } from './data/minerals.js';
 import { STRINGS } from './data/strings.js';
 import { ECONOMY } from './data/economy.js';
 
@@ -472,6 +472,14 @@ function setupInput() {
       }
       return;
     }
+    if (event.code === 'KeyQ') {
+      if (event.repeat) return;
+      if (app.phase === 'game' && !app.paused && !app.panel && !hasBlockingModal()) {
+        event.preventDefault();
+        handleDropSelected();
+      }
+      return;
+    }
     if (movementCodes.has(event.code)) {
       if (app.phase === 'game' && !app.paused && !app.panel) {
         event.preventDefault();
@@ -658,7 +666,8 @@ function handleInteract() {
     return;
   }
   if (nearest.type === 'mineral') {
-    if (app.selectedSlot !== 0) {
+    const equipped = sim.state.hotbar?.[app.selectedSlot]?.id === 'pickaxe';
+    if (!equipped) {
       notifications.toast({
         kind: 'warn',
         title: 'Equip Lunar Pickaxe',
@@ -713,14 +722,12 @@ function startMining(vein) {
 }
 
 function handleRefineSelected() {
-  if (app.selectedSlot < 1 || app.selectedSlot > 4) return;
-  const mineralId = MINERAL_ORDER[app.selectedSlot - 1];
-  const result = sim.refineMineral(mineralId);
+  const result = sim.refineHotbarSlot(app.selectedSlot);
   if (!result.ok) {
     notifications.toast({
       kind: 'info',
-      title: `No ${MINERALS[mineralId]?.name ?? 'mineral'} in slot`,
-      body: 'Equip the Pickaxe (1) and mine an exterior vein first.',
+      title: 'No mineral in selected slot',
+      body: 'Select a slot with mined ore (2–5) to refine it for ISRU resources.',
       icon: 'mineral',
       duration: 2800,
     });
@@ -736,6 +743,32 @@ function handleRefineSelected() {
     duration: 4200,
   });
   audio.play('success');
+  refreshHud();
+}
+
+function handleDropSelected() {
+  const result = sim.dropHotbarSlot(app.selectedSlot);
+  if (!result.ok) {
+    if (result.reason === 'locked_tool') {
+      notifications.toast({
+        kind: 'warn',
+        title: 'Cannot drop Lunar Pickaxe',
+        body: 'Select an item in slots 2–5 to drop it with Q.',
+        icon: 'pickaxe',
+        duration: 2600,
+      });
+      audio.play('error');
+    }
+    return;
+  }
+  notifications.toast({
+    kind: 'info',
+    title: `Dropped ${result.mineral?.name ?? result.droppedId}`,
+    body: result.remainingInSlot > 0 ? `${result.remainingInSlot} left in slot.` : 'Hotbar slot freed.',
+    icon: 'mineral',
+    duration: 2400,
+  });
+  audio.play('click');
   refreshHud();
 }
 
@@ -810,12 +843,21 @@ function completeScanTask() {
       notifications.toast({
         kind: 'good',
         title: `+1 ${result.mineral.name} (${result.mineral.formula})`,
-        body: `${result.mineral.nasaFact} Now carrying ×${result.count}.`,
+        body: `${result.mineral.nasaFact} Stored in slot ${result.slotIndex + 1} (×${result.count} total).`,
         sourceId: result.mineral.source,
         icon: result.mineral.id === 'water_ice' ? 'water' : 'mineral',
         duration: 5500,
       });
       audio.play('success');
+    } else if (result.reason === 'hotbar_full') {
+      notifications.toast({
+        kind: 'warn',
+        title: 'Hotbar full',
+        body: 'All 5 slots are full. Press Q on a mineral slot to drop an item (or F to refine).',
+        icon: 'alert',
+        duration: 4500,
+      });
+      audio.play('error');
     }
   } else {
     const result = sim.cleanSolarArray();
@@ -1221,8 +1263,9 @@ function refreshHud(cachedNearest = undefined) {
     : cachedNearest !== undefined
       ? cachedNearest
       : world.getNearestInteractable(app.player, 3.6);
+  const pickaxeEquipped = sim.state.hotbar?.[app.selectedSlot]?.id === 'pickaxe';
   app.nearest = nearest;
-  app.interaction = nearest ? world.describeInteraction(nearest, { pickaxeEquipped: app.selectedSlot === 0 }) : null;
+  app.interaction = nearest ? world.describeInteraction(nearest, { pickaxeEquipped }) : null;
   hud.update(sim, {
     speed: app.speed,
     presence: sim.presence,
@@ -1346,7 +1389,7 @@ function updateGameplay(dt, rawDt) {
     scanTarget: app.scan?.type === 'scan' ? app.scan.targetId : null,
     mineProgress: app.scan?.progress ?? 0,
     mineTarget: app.scan?.type === 'mine' ? app.scan.targetId : null,
-    pickaxeEquipped: app.selectedSlot === 0,
+    pickaxeEquipped: sim.state.hotbar?.[app.selectedSlot]?.id === 'pickaxe',
     moving,
     outside: app.outside,
     time: app.time,

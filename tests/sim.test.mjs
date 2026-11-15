@@ -284,3 +284,23 @@ test('infinite mineral veins can be mined repeatedly and refined for ISRU resour
   assert.equal(refined.remaining, 1);
   assert.equal(sim.state.resources.water, 58);
 });
+
+test('hotbar starts with pickaxe only, rejects when full, and frees slot on drop', () => {
+  const sim = new GameSim();
+  assert.equal(sim.state.hotbar[0]?.id, 'pickaxe');
+  assert.deepEqual(sim.state.hotbar.slice(1), [null, null, null, null]);
+
+  for (let i = 0; i < 5; i += 1) assert.equal(sim.mineMineral('water_ice').ok, true);
+  for (let i = 0; i < 5; i += 1) assert.equal(sim.mineMineral('ilmenite').ok, true);
+  for (let i = 0; i < 5; i += 1) assert.equal(sim.mineMineral('anorthite').ok, true);
+  for (let i = 0; i < 5; i += 1) assert.equal(sim.mineMineral('olivine').ok, true);
+
+  const full = sim.mineMineral('water_ice');
+  assert.equal(full.ok, false);
+  assert.equal(full.reason, 'hotbar_full');
+  assert.equal(sim.dropHotbarSlot(0).reason, 'locked_tool');
+
+  for (let i = 0; i < 5; i += 1) assert.equal(sim.dropHotbarSlot(1).ok, true);
+  assert.equal(sim.state.hotbar[1], null);
+  assert.equal(sim.mineMineral('olivine').ok, true);
+});
