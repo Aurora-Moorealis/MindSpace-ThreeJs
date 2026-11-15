@@ -779,7 +779,6 @@ function triggerEnding() {
 function showEvaluation() {
   app.phase = 'evaluation';
   hud.show(false);
-  world.setRoomSignsVisible(false);
   notifications.clear();
   stormOverlay.style.opacity = '0';
   stage.setMode('overview');
@@ -798,7 +797,6 @@ function enterFreeplay() {
   app.panel = null;
   app.tickAccum = 0;
   hud.show(true);
-  world.setRoomSignsVisible(true);
   stage.setMode('follow');
   stage.snapFollow(cameraTarget.set(app.player.x, 0.9, app.player.z));
   notifications.story('FREEPLAY', 'The primary mission is complete. The outpost keeps running; no further objectives will trigger.', 'target');
@@ -845,7 +843,6 @@ function goToTitle(initial = false) {
   world.astronaut.setFacing(0);
   world.astronaut.group.rotation.y = 0;
   world.setObjective(null);
-  world.setRoomSignsVisible(false);
   hud.show(false);
   titleScreen.show();
   stage.setMode('title');
@@ -900,7 +897,6 @@ function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false
   world.astronaut.setFacing(0);
   world.astronaut.group.rotation.y = 0;
   world.setObjective(null);
-  world.setRoomSignsVisible(false);
   hud.show(false);
   titleScreen.hide();
 
@@ -984,7 +980,6 @@ function finishIntro() {
   stage.setMode('follow');
   stage.snapFollow(cameraTarget.set(app.player.x, 0.9, app.player.z));
   hud.show(true);
-  world.setRoomSignsVisible(true);
   updateObjective(true);
   refreshHud();
   const lines = [
@@ -1012,7 +1007,6 @@ function beginGameplay({ silent = false } = {}) {
   titleScreen.hide();
   evaluationScreen.close();
   hud.show(true);
-  world.setRoomSignsVisible(true);
   hud.setSoundMuted(app.muted);
   stage.setMode('follow');
   stage.snapFollow(cameraTarget.set(app.player.x, 0.9, app.player.z));

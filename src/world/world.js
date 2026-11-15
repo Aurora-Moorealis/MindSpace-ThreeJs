@@ -5,7 +5,7 @@
  */
 
 import * as THREE from 'three';
-import { buildBase, getRoomAt, ROOMS } from './base.js';
+import { buildBase, getRoomAt } from './base.js';
 import { buildExterior } from './exterior.js';
 import { Astronaut } from './astronaut.js';
 import {
@@ -17,17 +17,7 @@ import {
 import { MACHINES, MISSION_BOARD } from '../data/machines.js';
 import { POIS } from '../data/pois.js';
 import { STRINGS } from '../data/strings.js';
-import { COLORS } from './primitives.js';
-
-const STATUS_COLORS = {
-  online: '#6ee7a8',
-  standby: '#ffb347',
-  repairing: '#ffb347',
-  broken: '#ff5a6a',
-  off: '#7f8da3',
-  night: '#6e8fb8',
-  starved: '#ff9f43',
-};
+import { COLORS, makeCanvasTexture } from './primitives.js';
 
 class WorldLabel {
   constructor(text, { worldWidth = 3.0, height = 190, fontSize = 38 } = {}) {
@@ -116,13 +106,10 @@ export class World {
     this.colliders = [];
     this.interactables = [];
     this.machineVisuals = new Map();
-    this.machineLabels = new Map();
     this.poiVisuals = new Map();
     this.poiLabels = new Map();
     this.stateAccum = 0;
     this.nearestId = null;
-    this.roomSigns = [];
-    this.showRoomSigns = false;
 
     this.base = buildBase();
     this.group.add(this.base.group);
@@ -170,22 +157,12 @@ export class World {
         });
       }
 
-      const label = new WorldLabel(STRINGS[row.nameKey] ?? row.id, { worldWidth: 4.2, height: 190, fontSize: 46 });
-      label.sprite.position.set(
-        row.position[0],
-        (isExterior ? -0.08 : 0) + visual.labelHeight + 0.2,
-        row.position[2]
-      );
-      this.group.add(label.sprite);
-      this.machineLabels.set(row.id, label);
-
       this.interactables.push({
         id: row.id,
         type: 'machine',
         machineId: row.id,
         position: new THREE.Vector3(row.position[0], isExterior ? -0.08 : 0, row.position[2]),
         radius: row.id === 'solar_array' ? 4.6 : row.id === 'storm_shelter' ? 3.6 : 2.9,
-        label,
         visual,
       });
     }
@@ -197,17 +174,12 @@ export class World {
     board.group.rotation.y = MISSION_BOARD.rotationY ?? 0;
     this.group.add(board.group);
     this.colliders.push({ minX: -5.9, maxX: -3.1, minZ: 3.95, maxZ: 5.05 });
-    const boardLabel = new WorldLabel(STRINGS['station.mission_board.name'], { worldWidth: 4.2, height: 190, fontSize: 46 });
-    boardLabel.sprite.position.set(MISSION_BOARD.position[0], board.labelHeight + 0.3, MISSION_BOARD.position[2]);
-    this.group.add(boardLabel.sprite);
-    this.boardLabel = boardLabel;
     this.interactables.push({
       id: 'mission_board',
       type: 'station',
       stationId: 'mission_board',
       position: new THREE.Vector3(MISSION_BOARD.position[0], 0, MISSION_BOARD.position[2]),
       radius: 2.6,
-      label: boardLabel,
       visual: board,
     });
 
@@ -241,28 +213,69 @@ export class World {
   }
 
   _buildRoomSigns() {
+    // Wall-mounted plates, not billboards. Each one is placed on the inner face
+    // of a north wall that faces the tilted camera, so it reads as a real sign.
     const rows = [
-      { id: 'dormitory', title: 'DORMITORY', sub: 'CREW QUARTERS · STORM SHELTER', color: '#ffd8ad', x: -21.5, z: -15.25, y: 1.95 },
-      { id: 'greenhouse', title: 'GREENHOUSE', sub: 'HYDROPONICS · FOOD + O₂', color: '#8ef0b0', x: -5, z: -15.25, y: 1.95 },
-      { id: 'energy', title: 'POWER ROOM', sub: 'SOLAR · BATTERY · DISTRIBUTION', color: '#ffcf88', x: 15, z: -15.25, y: 1.95 },
-      { id: 'comms', title: 'COMMUNICATIONS', sub: 'DSN TERMINAL · SCIENCE REPORTS', color: '#9fc4ff', x: -18.5, z: 3.0, y: 1.95 },
-      { id: 'workshop', title: 'WORKSHOP', sub: 'O₂ · WATER · REPAIR BENCH', color: '#ffc08a', x: 17, z: 3.0, y: 1.95 },
+      { id: 'dormitory', title: 'DORMITORY', sub: 'CREW QUARTERS · STORM SHELTER', color: '#ffd8ad', x: -21.5, y: 1.35, z: -15.72, width: 6.0 },
+      { id: 'greenhouse', title: 'GREENHOUSE', sub: 'HYDROPONICS · FOOD + O₂', color: '#8ef0b0', x: -5, y: 1.35, z: -15.72, width: 6.0 },
+      { id: 'energy', title: 'POWER ROOM', sub: 'SOLAR · BATTERY · DISTRIBUTION', color: '#ffcf88', x: 15, y: 1.35, z: -15.72, width: 6.0 },
+      { id: 'comms', title: 'COMMUNICATIONS', sub: 'DSN TERMINAL · SCIENCE REPORTS', color: '#9fc4ff', x: -18.5, y: 1.15, z: 2.71, width: 6.0 },
+      { id: 'workshop', title: 'WORKSHOP', sub: 'O₂ · WATER · REPAIR BENCH', color: '#ffc08a', x: 22.5, y: 1.15, z: 2.71, width: 6.0 },
     ];
+    const frameMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2c3442,
+      roughness: 0.55,
+      metalness: 0.35,
+    });
     for (const row of rows) {
-      const label = new WorldLabel(row.title, { worldWidth: 5.6, height: 180, fontSize: 48 });
-      label.update(row.title, row.sub, row.color);
-      label.sprite.position.set(row.x, row.y, row.z);
-      label.sprite.visible = false;
-      label.material.depthTest = true;
-      this.group.add(label.sprite);
-      this.roomSigns.push({ ...row, label });
-    }
-  }
-
-  setRoomSignsVisible(visible) {
-    this.showRoomSigns = Boolean(visible);
-    if (!this.showRoomSigns) {
-      for (const sign of this.roomSigns) sign.label.sprite.visible = false;
+      const height = row.width * 0.25;
+      const texture = makeCanvasTexture(1024, 256, (ctx, w, h) => {
+        ctx.fillStyle = '#07131f';
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = 'rgba(126,190,230,0.13)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < w; x += 32) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, h);
+          ctx.stroke();
+        }
+        for (let y = 0; y < h; y += 32) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = row.color;
+        ctx.lineWidth = 5;
+        ctx.strokeRect(10, 10, w - 20, h - 20);
+        ctx.fillStyle = row.color;
+        ctx.fillRect(10, 10, 14, h - 20);
+        ctx.fillStyle = '#eef5ff';
+        ctx.font = '700 100px "Rajdhani", "Segoe UI", sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(row.title, 48, 104, w - 80);
+        ctx.fillStyle = '#9db4cc';
+        ctx.font = '600 54px "Rajdhani", "Segoe UI", sans-serif';
+        ctx.fillText(row.sub, 48, 186, w - 80);
+        ctx.fillStyle = row.color;
+        ctx.beginPath();
+        ctx.arc(w - 44, 48, 9, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      const frame = new THREE.Mesh(
+        new THREE.BoxGeometry(row.width + 0.16, height + 0.16, 0.08),
+        frameMaterial
+      );
+      frame.position.set(row.x, row.y, row.z - 0.045);
+      this.group.add(frame);
+      const plate = new THREE.Mesh(
+        new THREE.PlaneGeometry(row.width, height),
+        new THREE.MeshBasicMaterial({ map: texture, toneMapped: false })
+      );
+      plate.position.set(row.x, row.y, row.z);
+      plate.renderOrder = 2;
+      this.group.add(plate);
     }
   }
 
@@ -485,36 +498,7 @@ export class World {
         const view = sim.machineView(id);
         if (!view) continue;
         visual.setState?.(view, sim);
-        const label = this.machineLabels.get(id);
-        if (label) {
-          let status = view.status;
-          let subtitle = '';
-          if (id === 'solar_array') {
-            subtitle = `${Math.round(sim.state.dust)}% dust · ${view.outputs?.energy?.toFixed(1) ?? '0'} kW`;
-          } else if (id === 'storm_shelter') {
-            subtitle = sim.state.shelterLocked ? 'SEALED' : 'OPEN';
-          } else if (id === 'battery') {
-            subtitle = `${Math.round(sim.state.resources.energy)} / ${sim.energyCapacity} kWh`;
-          } else if (view.job) {
-            subtitle = `${view.job.type === 'upgrade' ? 'UPGRADE' : 'REPAIR'} · ${Math.max(1, view.job.remainingTicks)} h left`;
-          } else if (view.kind === 'production' || view.kind === 'solar') {
-            subtitle = `${view.status.toUpperCase()} · ${Math.round(view.condition)}%`;
-          } else {
-            subtitle = 'ONLINE';
-          }
-          const accent = STATUS_COLORS[status] ?? '#4de2ff';
-          label.update(
-            STRINGS[view.nameKey] ?? id,
-            subtitle,
-            accent,
-            view.kind === 'production' || view.kind === 'solar'
-              ? { value: view.condition / 100, label: `CONDITION ${Math.round(view.condition)}%` }
-              : null
-          );
-        }
       }
-      this.boardLabel?.update(STRINGS['station.mission_board.name'], 'Mission · contracts · clock', '#4de2ff');
-
       // POI labels.
       for (const poi of POIS) {
         const label = this.poiLabels.get(poi.id);
@@ -565,15 +549,6 @@ export class World {
         label.sprite.renderOrder = 30;
         label.material.opacity = 1;
       }
-    }
-
-    // Room signs: large, camera-facing, only for the room the astronaut is in.
-    const currentRoom = getRoomAt(player.x, player.z);
-    for (const sign of this.roomSigns) {
-      const dist = Math.hypot(player.x - sign.x, player.z - sign.z);
-      const visible = this.showRoomSigns && (sign.id === currentRoom || dist < 6.5);
-      sign.label.sprite.visible = visible;
-      if (visible) sign.label.material.opacity = sign.id === currentRoom ? 1 : Math.max(0.35, 1 - dist / 10);
     }
 
     // Objective beacon.

@@ -97,12 +97,6 @@ export class BaseBuilder {
     const baseTrim = box(w + 0.02, 0.12, d + 0.04, 0x343e4c, { material: this.trimMaterial });
     baseTrim.position.set(cx, 0.08, cz);
     this.group.add(baseTrim);
-    const topTrim = box(w + 0.03, 0.08, d + 0.05, 0x2c3442, { material: this.trimMaterial });
-    topTrim.position.set(cx, height - 0.03, cz);
-    this.group.add(topTrim);
-    const midRib = box(w + 0.035, 0.05, d + 0.06, 0x5c6878, { material: this.trimMaterial });
-    midRib.position.set(cx, height * 0.52, cz);
-    this.group.add(midRib);
     if (collider) this.addCollider(cx, cz, w, d);
     return mesh;
   }
@@ -150,17 +144,6 @@ export class BaseBuilder {
       plane.renderOrder = 1;
       this.group.add(plane);
     }
-
-    // Corridor centre stripe and airlock threshold.
-    const stripeMat = new THREE.MeshBasicMaterial({ color: COLORS.hazard, transparent: true, opacity: 0.55 });
-    const stripe = new THREE.Mesh(new THREE.PlaneGeometry(57, 0.14), stripeMat);
-    stripe.rotation.x = -Math.PI / 2;
-    stripe.position.set(-1.5, 0.055, 0);
-    this.group.add(stripe);
-    const hubStripe = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 12), stripeMat);
-    hubStripe.rotation.x = -Math.PI / 2;
-    hubStripe.position.set(0, 0.055, 9.5);
-    this.group.add(hubStripe);
 
     for (const z of [6, 16]) {
       const hazard = new THREE.Mesh(
@@ -219,9 +202,6 @@ export class BaseBuilder {
     const beam = box(width + postSize * 2, 0.16, 0.38, COLORS.wallTrim, { material: this.trimMaterial });
     beam.position.set(centerX, height + 0.02, centerZ);
     group.add(beam);
-    const light = glowBar(width * 0.7, 0.035, 0.04, COLORS.teal, 1.6);
-    light.position.set(centerX, height - 0.05, centerZ + (horizontal ? 0.2 : 0));
-    group.add(light);
     if (label) {
       const sprite = makeTextSprite(label, {
         worldWidth: Math.min(3.8, width + 1.2),
@@ -259,14 +239,17 @@ export class BaseBuilder {
   }
 
   wallLight(x, z, rotation = 0, color = COLORS.warm) {
-    const bar = glowBar(1.8, 0.055, 0.05, color, 1.8);
-    bar.position.set(x, 1.55, z);
-    bar.rotation.y = rotation;
-    this.group.add(bar);
-    const bracket = box(2.0, 0.14, 0.08, COLORS.darkMetal);
-    bracket.position.set(x, 1.62, z - Math.sin(rotation) * 0.02);
+    // Compact sconce: the old 1.8 m emissive bar read as a stray line in the corridor.
+    const bracket = box(0.42, 0.26, 0.12, COLORS.darkMetal);
+    bracket.position.set(x, 1.43, z);
     bracket.rotation.y = rotation;
     this.group.add(bracket);
+    const lamp = glowBar(0.26, 0.05, 0.04, color, 1.8);
+    const normalX = Math.sin(rotation);
+    const normalZ = Math.cos(rotation);
+    lamp.position.set(x + normalX * 0.08, 1.38, z + normalZ * 0.08);
+    lamp.rotation.y = rotation;
+    this.group.add(lamp);
   }
 
   pointLight(x, z, { intensity = 18, distance = 14, color = COLORS.warm, y = 2.55 } = {}) {
@@ -716,11 +699,6 @@ export class BaseBuilder {
     this.pointLight(0, 11, { color: 0xffc27a, intensity: 34, distance: 12 });
     this.pointLight(-22, 0, { color: 0xffe0b0, intensity: 26, distance: 13 });
     this.pointLight(12, 0, { color: 0xffe0b0, intensity: 26, distance: 13 });
-
-    // Corridor pipes and cables.
-    this.addPipeRun(-29, -2.22, 26, -2.22, 1.78, COLORS.metal);
-    this.addPipeRun(-29, -2.08, 26, -2.08, 1.72, 0x506070, 0.035);
-    this.addPipeRun(-29, 2.22, 26, 2.22, 1.8, COLORS.metal);
 
     // Dormitory props.
     this.addBed(-18, -13.2, 0);
