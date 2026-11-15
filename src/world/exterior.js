@@ -419,14 +419,20 @@ export class ExteriorBuilder {
     for (const fn of this.animated) fn(dt);
     if (this.dust) {
       const attr = this.dust.points.geometry.attributes.position;
+      const arr = attr.array;
       const speeds = this.dust.speeds;
-      for (let i = 0; i < attr.count; i += 1) {
-        let x = attr.getX(i) + speeds[i] * dt * (0.6 + storm * 2.4);
-        let y = attr.getY(i) + Math.sin(performance.now() * 0.0006 + i) * dt * 0.08;
+      const count = speeds.length;
+      const speedMul = dt * (0.6 + storm * 2.4);
+      const timeBase = performance.now() * 0.0006;
+      const yStep = dt * 0.08;
+      for (let i = 0; i < count; i += 1) {
+        const idx = i * 3;
+        let x = arr[idx] + speeds[i] * speedMul;
+        let y = arr[idx + 1] + Math.sin(timeBase + i) * yStep;
         if (x > 54) x = -54;
         if (y > 6) y = 0.1;
-        attr.setX(i, x);
-        attr.setY(i, y);
+        arr[idx] = x;
+        arr[idx + 1] = y;
       }
       attr.needsUpdate = true;
       this.dust.mat.opacity = 0.22 + storm * 0.5;

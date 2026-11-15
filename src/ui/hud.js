@@ -140,6 +140,21 @@ export class HUD {
           <div class="scan-track"><div class="scan-fill" id="hud-scan-fill"></div></div>
           <div class="scan-hint">Stay still. Moving cancels the scan.</div>
         </div>
+        <div class="inventory-wrap" id="hud-inventory-wrap">
+          <div class="inv-caption" id="hud-inv-caption">1 · EVA SCANNER</div>
+          <div class="inventory-bar" id="hud-inventory" role="toolbar" aria-label="Inventory slots">
+            ${[0, 1, 2, 3, 4]
+              .map(
+                (i) => `
+              <button class="inv-slot${i === 0 ? ' active' : ''}" type="button" data-slot="${i}" title="Slot ${i + 1}">
+                <span class="inv-key">${i + 1}</span>
+                <span class="inv-icon" data-inv-icon></span>
+                <span class="inv-label" data-inv-label>EMPTY</span>
+              </button>`
+              )
+              .join('')}
+          </div>
+        </div>
       </div>
 
       <div class="storm-strip hidden" id="hud-storm">
@@ -175,13 +190,38 @@ export class HUD {
 
     this.refs = {
       resources: Object.fromEntries(
-        ['o2', 'water', 'food', 'energy'].map((id) => [id, this.root.querySelector(`[data-res="${id}"]`)])
+        ['o2', 'water', 'food', 'energy'].map((id) => {
+          const row = this.root.querySelector(`[data-res="${id}"]`);
+          return [
+            id,
+            {
+              row,
+              fill: row.querySelector('.res-fill'),
+              value: row.querySelector('[data-res-value]'),
+              cap: row.querySelector('[data-res-cap]'),
+              delta: row.querySelector('[data-res-delta]'),
+            },
+          ];
+        })
       ),
-      health: this.root.querySelector('[data-vital="health"]'),
-      radiation: this.root.querySelector('[data-vital="radiation"]'),
-      nutrition: this.root.querySelector('[data-mini="nutrition"]'),
-      hydration: this.root.querySelector('[data-mini="hydration"]'),
-      suit: this.root.querySelector('[data-mini="suit"]'),
+      healthVal: this.root.querySelector('[data-value="health"]'),
+      healthFill: this.root.querySelector('[data-vital="health"] .vital-fill'),
+      healthCap: this.root.querySelector('[data-vital="health"] .vital-cap'),
+      radVal: this.root.querySelector('[data-value="radiation"]'),
+      radFill: this.root.querySelector('[data-vital="radiation"] .vital-fill'),
+      minis: Object.fromEntries(
+        ['nutrition', 'hydration', 'suit'].map((id) => {
+          const node = this.root.querySelector(`[data-mini="${id}"]`);
+          return [
+            id,
+            {
+              value: node.querySelector('[data-value]'),
+              fill: node.querySelector('.mini-fill'),
+            },
+          ];
+        })
+      ),
+      speedBtns: Array.from(this.root.querySelectorAll('.speed-btn')),
       sol: this.root.querySelector('#hud-sol'),
       time: this.root.querySelector('#hud-time'),
       phase: this.root.querySelector('#hud-phase'),
@@ -207,6 +247,12 @@ export class HUD {
       scanLabel: this.root.querySelector('#hud-scan-label'),
       scanPct: this.root.querySelector('#hud-scan-pct'),
       scanFill: this.root.querySelector('#hud-scan-fill'),
+      invCaption: this.root.querySelector('#hud-inv-caption'),
+      invSlots: Array.from(this.root.querySelectorAll('.inv-slot')).map((node) => ({
+        node,
+        icon: node.querySelector('[data-inv-icon]'),
+        label: node.querySelector('[data-inv-label]'),
+      })),
       storm: this.root.querySelector('#hud-storm'),
       stormTitle: this.root.querySelector('#hud-storm-title'),
       stormDetail: this.root.querySelector('#hud-storm-detail'),
@@ -215,8 +261,11 @@ export class HUD {
       sound: this.root.querySelector('[data-action="sound"]'),
     };
 
-    this.root.querySelectorAll('.speed-btn').forEach((button) => {
+    this.refs.speedBtns.forEach((button) => {
       button.addEventListener('click', () => this.callbacks.onSpeed?.(Number(button.dataset.speed)));
+    });
+    this.refs.invSlots.forEach((slot, index) => {
+      slot.node.addEventListener('click', () => this.callbacks.onSlot?.(index));
     });
     this.root.querySelector('[data-action="pause"]').addEventListener('click', () => this.callbacks.onPause?.());
     this.root.querySelector('[data-action="menu"]').addEventListener('click', () => this.callbacks.onMenu?.());
@@ -238,53 +287,73 @@ export class HUD {
     this.root.classList.toggle('hidden', !visible);
   }
 
+  setSelectedSlot(index) {
+    this.selectedSlot = index;
+    this.refs.invSlots.forEach((slot, i) => {
+      slot.node.classList.toggle('active', i === index);
+    });
+    const item = this._lastInvItems?.[index];
+    if (item) {
+      this.refs.invCaption.textContent = `${index + 1} · ${item.caption}`;
+    } else {
+      this.refs.invCaption.textContent = `${index + 1} · EMPTY SLOT`;
+    }
+  }
+
+  updateScan(scan) {
+    if (scan) {
+      this.refs.scan.classList.remove('hidden');
+      this.refs.scanLabel.textContent = scan.label;
+      this.refs.scanPct.textContent = `${Math.round(scan.progress * 100)}%`;
+      this.refs.scanFill.style.width = `${clamp(scan.progress * 100, 0, 100)}%`;
+    } else {
+      this.refs.scan.classList.add('hidden');
+    }
+  }
+
   update(sim, ctx) {
     const state = sim.state;
     const resources = state.resources;
     for (const id of ['o2', 'water', 'food', 'energy']) {
-      const row = this.refs.resources[id];
+      const refs = this.refs.resources[id];
       const value = resources[id];
       const cap = sim.getResourceCapacity(id);
       const pct = cap > 0 ? (value / cap) * 100 : 0;
       const cfg = ECONOMY.resources[id];
-      const fill = row.querySelector('.res-fill');
-      fill.style.width = `${clamp(pct, 0, 100)}%`;
-      fill.classList.toggle('critical', pct <= cfg.critical);
-      fill.classList.toggle('warning', pct > cfg.critical && pct <= cfg.warning);
-      row.querySelector('[data-res-value]').textContent = Math.round(pct);
-      const capNode = row.querySelector('[data-res-cap]');
+      refs.fill.style.width = `${clamp(pct, 0, 100)}%`;
+      refs.fill.classList.toggle('critical', pct <= cfg.critical);
+      refs.fill.classList.toggle('warning', pct > cfg.critical && pct <= cfg.warning);
+      refs.value.textContent = Math.round(pct);
       const o2Emergency = id === 'o2' && value <= 0;
-      row.classList.toggle('emergency', o2Emergency);
+      refs.row.classList.toggle('emergency', o2Emergency);
       if (o2Emergency) {
-        capNode.textContent = `SUIT RESERVE ${state.emergencyO2} h`;
-        capNode.classList.add('danger');
+        refs.cap.textContent = `SUIT RESERVE ${state.emergencyO2} h`;
+        refs.cap.classList.add('danger');
       } else if (id === 'energy' && state.lastPower.shed.length) {
         const shedShort = { lights: 'LIGHTS', hydroponics: 'HYDRO', water_recycler: 'RECYCLER', o2_system: 'O2' };
-        capNode.textContent = `SHED: ${state.lastPower.shed.map((key) => shedShort[key] ?? key).join(' ')}`;
-        capNode.classList.add('danger');
+        refs.cap.textContent = `SHED: ${state.lastPower.shed.map((key) => shedShort[key] ?? key).join(' ')}`;
+        refs.cap.classList.add('danger');
       } else {
-        capNode.textContent = `${Math.round(value)} / ${Math.round(cap)}`;
-        capNode.classList.remove('danger');
+        refs.cap.textContent = `${Math.round(value)} / ${Math.round(cap)}`;
+        refs.cap.classList.remove('danger');
       }
       const delta = state.lastDelta[id] ?? 0;
       const deltaPct = cap > 0 ? (delta / cap) * 100 : 0;
-      const deltaNode = row.querySelector('[data-res-delta]');
-      deltaNode.textContent = `${formatDelta(deltaPct)}/h`;
-      deltaNode.className = `res-delta ${deltaClass(delta)}`;
+      refs.delta.textContent = `${formatDelta(deltaPct)}/h`;
+      refs.delta.className = `res-delta ${deltaClass(delta)}`;
     }
 
     const maxHealth = Math.round(sim.maxHealth);
-    this.refs.health.querySelector('[data-value="health"]').textContent = Math.round(state.health);
-    this.refs.health.querySelector('.vital-fill').style.width = `${clamp(state.health, 0, 100)}%`;
-    this.refs.health.querySelector('.vital-fill').classList.toggle('critical', state.health < 30);
-    const capLine = this.refs.health.querySelector('.vital-cap');
-    capLine.style.left = `${clamp(maxHealth, 0, 100)}%`;
-    capLine.classList.toggle('hidden', maxHealth >= 99);
+    this.refs.healthVal.textContent = Math.round(state.health);
+    this.refs.healthFill.style.width = `${clamp(state.health, 0, 100)}%`;
+    this.refs.healthFill.classList.toggle('critical', state.health < 30);
+    this.refs.healthCap.style.left = `${clamp(maxHealth, 0, 100)}%`;
+    this.refs.healthCap.classList.toggle('hidden', maxHealth >= 99);
     this.refs.maxhp.textContent = `MAX HP ${maxHealth}`;
-    this.refs.radiation.querySelector('[data-value="radiation"]').textContent = state.radiation.toFixed(1);
-    this.refs.radiation.querySelector('.vital-fill').style.width = `${clamp(state.radiation, 0, 100)}%`;
-    this.refs.radiation.querySelector('.vital-fill').classList.toggle('critical', state.radiation >= 70);
-    this.refs.radiation.querySelector('.vital-fill').classList.toggle('warning', state.radiation >= 30 && state.radiation < 70);
+    this.refs.radVal.textContent = state.radiation.toFixed(1);
+    this.refs.radFill.style.width = `${clamp(state.radiation, 0, 100)}%`;
+    this.refs.radFill.classList.toggle('critical', state.radiation >= 70);
+    this.refs.radFill.classList.toggle('warning', state.radiation >= 30 && state.radiation < 70);
 
     const minis = {
       nutrition: state.nutrition,
@@ -292,12 +361,11 @@ export class HUD {
       suit: state.suit,
     };
     for (const [id, value] of Object.entries(minis)) {
-      const node = this.refs[id];
-      node.querySelector('[data-value]').textContent = `${Math.round(value)}%`;
-      const fill = node.querySelector('.mini-fill');
-      fill.style.width = `${clamp(value, 0, 100)}%`;
-      fill.classList.toggle('critical', value < 25);
-      fill.classList.toggle('warning', value >= 25 && value < 45);
+      const refs = this.refs.minis[id];
+      refs.value.textContent = `${Math.round(value)}%`;
+      refs.fill.style.width = `${clamp(value, 0, 100)}%`;
+      refs.fill.classList.toggle('critical', value < 25);
+      refs.fill.classList.toggle('warning', value >= 25 && value < 45);
     }
 
     this.refs.sol.textContent = `SOL ${sim.sol}`;
@@ -319,7 +387,7 @@ export class HUD {
     this.refs.zonerad.classList.toggle('danger', ctx.presence?.outside || Boolean(sim.getStorm()));
 
     // Speed buttons.
-    this.root.querySelectorAll('.speed-btn').forEach((button) => {
+    this.refs.speedBtns.forEach((button) => {
       button.classList.toggle('active', Number(button.dataset.speed) === ctx.speed);
     });
 
@@ -333,14 +401,18 @@ export class HUD {
     else if (scans > 0) title = 'Continue the surface survey';
     this.refs.objectiveTitle.textContent = title;
     this.refs.missionTime.textContent = formatMissionTime(state.tick);
-    this.refs.pips.innerHTML = `
-      <div class="pip-row"><span class="pip-label">SCANS</span>${[0, 1, 2]
-        .map((i) => `<span class="pip ${i < scans ? 'done' : ''}">${i < scans ? svgIcon('check', 10) : i + 1}</span>`)
-        .join('')}</div>
-      <div class="pip-row"><span class="pip-label">REPORTS</span>${[0, 1, 2]
-        .map((i) => `<span class="pip ${i < reports ? 'done' : ''}">${i < reports ? svgIcon('check', 10) : i + 1}</span>`)
-        .join('')}</div>
-    `;
+    const pipsSignature = `${scans}|${reports}`;
+    if (pipsSignature !== this.pipsSignature) {
+      this.pipsSignature = pipsSignature;
+      this.refs.pips.innerHTML = `
+        <div class="pip-row"><span class="pip-label">SCANS</span>${[0, 1, 2]
+          .map((i) => `<span class="pip ${i < scans ? 'done' : ''}">${i < scans ? svgIcon('check', 10) : i + 1}</span>`)
+          .join('')}</div>
+        <div class="pip-row"><span class="pip-label">REPORTS</span>${[0, 1, 2]
+          .map((i) => `<span class="pip ${i < reports ? 'done' : ''}">${i < reports ? svgIcon('check', 10) : i + 1}</span>`)
+          .join('')}</div>
+      `;
+    }
     if (ctx.objective) {
       this.refs.targetText.textContent = ctx.objective.label;
       this.refs.targetDistance.textContent =
@@ -420,9 +492,12 @@ export class HUD {
 
     // Zone badge.
     const zoneLabel = ctx.zone?.label ?? 'HABITAT';
-    this.refs.zone.innerHTML = `${svgIcon(ctx.presence?.outside ? 'radiation' : ctx.presence?.inShelter && state.shelterLocked ? 'lock' : 'target', 14)} <span>${escapeHtml(
-      zoneLabel
-    )}</span>`;
+    const zoneIcon = ctx.presence?.outside ? 'radiation' : ctx.presence?.inShelter && state.shelterLocked ? 'lock' : 'target';
+    const zoneSignature = `${zoneIcon}|${zoneLabel}`;
+    if (zoneSignature !== this.zoneSignature) {
+      this.zoneSignature = zoneSignature;
+      this.refs.zone.innerHTML = `${svgIcon(zoneIcon, 14)} <span>${escapeHtml(zoneLabel)}</span>`;
+    }
     this.refs.zone.classList.toggle('outside', Boolean(ctx.presence?.outside));
     this.refs.zone.classList.toggle('sheltered', Boolean(ctx.presence?.inShelter && state.shelterLocked));
 
@@ -443,15 +518,51 @@ export class HUD {
       }
     }
 
-    // Scan/task progress.
-    if (ctx.scan) {
-      this.refs.scan.classList.remove('hidden');
-      this.refs.scanLabel.textContent = ctx.scan.label;
-      this.refs.scanPct.textContent = `${Math.round(ctx.scan.progress * 100)}%`;
-      this.refs.scanFill.style.width = `${clamp(ctx.scan.progress * 100, 0, 100)}%`;
-    } else {
-      this.refs.scan.classList.add('hidden');
+    // Inventory bar (5 slots).
+    const selectedSlot = ctx.selectedSlot ?? this.selectedSlot ?? 0;
+    const samples = state.samples ?? [];
+    const invSignature = `${selectedSlot}|${samples.join(',')}`;
+    if (invSignature !== this.inventorySignature) {
+      this.inventorySignature = invSignature;
+      const items = [
+        { icon: 'scan', label: 'SCANNER', caption: 'EVA SCANNER · Survey POIs', filled: true },
+        null,
+        null,
+        null,
+        null,
+      ];
+      samples.slice(0, 4).forEach((poiId, idx) => {
+        const code = poiId.replace('poi_', '').toUpperCase();
+        items[idx + 1] = {
+          icon: 'sample',
+          label: `SITE ${code}`,
+          caption: `SAMPLE ${code} · Deliver to Comms Console`,
+          filled: true,
+          sample: true,
+        };
+      });
+      this._lastInvItems = items;
+      this.refs.invSlots.forEach((slot, i) => {
+        const item = items[i];
+        slot.node.classList.toggle('active', i === selectedSlot);
+        slot.node.classList.toggle('filled', Boolean(item));
+        slot.node.classList.toggle('sample', Boolean(item?.sample));
+        if (item) {
+          slot.icon.innerHTML = svgIcon(item.icon, 20);
+          slot.label.textContent = item.label;
+        } else {
+          slot.icon.innerHTML = '';
+          slot.label.textContent = 'EMPTY';
+        }
+      });
+      const activeItem = items[selectedSlot];
+      this.refs.invCaption.textContent = activeItem
+        ? `${selectedSlot + 1} · ${activeItem.caption}`
+        : `${selectedSlot + 1} · EMPTY SLOT`;
     }
+
+    // Scan/task progress.
+    this.updateScan(ctx.scan);
 
     // Storm strip.
     const storm = sim.getStorm();
