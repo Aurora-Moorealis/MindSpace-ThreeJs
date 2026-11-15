@@ -6,8 +6,35 @@
 import * as THREE from 'three';
 import { COLORS, box, cylinder, glowBar, material, rounded, sphere } from './primitives.js';
 
+function addContactShadow(group) {
+  const shadowCanvas = document.createElement('canvas');
+  shadowCanvas.width = 128;
+  shadowCanvas.height = 128;
+  const ctx = shadowCanvas.getContext('2d');
+  const grad = ctx.createRadialGradient(64, 64, 4, 64, 64, 60);
+  grad.addColorStop(0, 'rgba(0,0,0,0.45)');
+  grad.addColorStop(0.6, 'rgba(0,0,0,0.2)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  const shadowTex = new THREE.CanvasTexture(shadowCanvas);
+  const shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.4, 1.4),
+    new THREE.MeshBasicMaterial({
+      map: shadowTex,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+    })
+  );
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.02;
+  shadow.renderOrder = 1;
+  group.add(shadow);
+}
+
 export class Astronaut {
-  constructor() {
+  constructor(template = null) {
     this.group = new THREE.Group();
     this.walkPhase = 0;
     this.moving = false;
@@ -15,6 +42,26 @@ export class Astronaut {
     this.targetFacing = 0;
     this.speedMultiplier = 1;
     this.groundY = 0;
+
+    if (template) {
+      // Authored GLB with named rigid pivots. Clone it so a future second
+      // astronaut instance would not share transforms.
+      this.group.add(template.clone(true));
+      this.loaded = true;
+      this.torso = this.group.getObjectByName('Torso');
+      this.armL = this.group.getObjectByName('ArmL');
+      this.armR = this.group.getObjectByName('ArmR');
+      this.legL = this.group.getObjectByName('LegL');
+      this.legR = this.group.getObjectByName('LegR');
+      this.chestLight = this.group.getObjectByName('ChestLight');
+      this.antennaLight = this.group.getObjectByName('AntennaLight');
+      this._attachPickaxe(this.armR);
+      addContactShadow(this.group);
+      this.group.position.set(0, 0, 2.5);
+      return;
+    }
+
+    this.loaded = false;
 
     const suit = material(0xe7ebef, { roughness: 0.62, metalness: 0.05 });
     const suitShade = material(0xc7ccd2, { roughness: 0.7, metalness: 0.05 });
@@ -125,6 +172,8 @@ export class Astronaut {
     this.armL = makeArm(-1);
     this.armR = makeArm(1);
 
+    this._attachPickaxe(this.armR);
+
     // Legs.
     const makeLeg = (side) => {
       const pivot = new THREE.Group();
@@ -149,33 +198,29 @@ export class Astronaut {
     this.legL = makeLeg(-1);
     this.legR = makeLeg(1);
 
-    // Soft contact shadow.
-    const shadowCanvas = document.createElement('canvas');
-    shadowCanvas.width = 128;
-    shadowCanvas.height = 128;
-    const ctx = shadowCanvas.getContext('2d');
-    const grad = ctx.createRadialGradient(64, 64, 4, 64, 64, 60);
-    grad.addColorStop(0, 'rgba(0,0,0,0.45)');
-    grad.addColorStop(0.6, 'rgba(0,0,0,0.2)');
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 128, 128);
-    const shadowTex = new THREE.CanvasTexture(shadowCanvas);
-    const shadow = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.4, 1.4),
-      new THREE.MeshBasicMaterial({
-        map: shadowTex,
-        transparent: true,
-        depthWrite: false,
-        toneMapped: false,
-      })
-    );
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = 0.02;
-    shadow.renderOrder = 1;
-    this.group.add(shadow);
+    addContactShadow(this.group);
 
     this.group.position.set(0, 0, 2.5);
+  }
+
+  /**
+   * Lunar pickaxe held in the right hand. Both rigs (authored GLB and
+   * procedural fallback) put the shoulder pivot at the top of the arm with the
+   * hand ~0.71 below it, so the same offsets work for either.
+   */
+  _attachPickaxe(arm) {
+    if (!arm) return;
+    const pickaxe = new THREE.Group();
+    const shaft = cylinder(0.025, 0.028, 0.72, 6, COLORS.amber);
+    shaft.rotation.x = Math.PI / 2;
+    shaft.position.set(0, -0.71, 0.24);
+    pickaxe.add(shaft);
+    const head = box(0.36, 0.06, 0.08, COLORS.teal);
+    head.position.set(0, -0.71, 0.54);
+    pickaxe.add(head);
+    pickaxe.visible = true;
+    arm.add(pickaxe);
+    this.pickaxe = pickaxe;
   }
 
   setPosition(x, z) {
@@ -191,17 +236,22 @@ export class Astronaut {
     this.groundY = y;
   }
 
-  update(dt, moving) {
+  setPickaxeEquipped(equipped) {
+    if (this.pickaxe) this.pickaxe.visible = Boolean(equipped);
+  }
+
+  update(dt, moving, speedFactor = 1, mining = false) {
     this.moving = moving;
     const speed = 8.5;
-    if (moving) this.walkPhase += dt * speed;
+    if (moving) this.walkPhase += dt * speed * speedFactor;
+    else if (mining) this.walkPhase += dt * 9.5;
     else this.walkPhase += dt * 1.6;
     const swing = moving ? Math.sin(this.walkPhase) * 0.62 : Math.sin(this.walkPhase) * 0.025;
     const armSwing = moving ? Math.sin(this.walkPhase) * 0.5 : Math.sin(this.walkPhase) * 0.02;
     this.legL.rotation.x = swing;
     this.legR.rotation.x = -swing;
     this.armL.rotation.x = -armSwing;
-    this.armR.rotation.x = armSwing;
+    this.armR.rotation.x = mining ? -0.65 + Math.sin(this.walkPhase) * 0.85 : armSwing;
     this.armL.rotation.z = 0.04;
     this.armR.rotation.z = -0.04;
     const bob = moving ? Math.abs(Math.sin(this.walkPhase)) * 0.045 : Math.sin(this.walkPhase) * 0.008;
@@ -211,10 +261,18 @@ export class Astronaut {
     let delta = this.targetFacing - this.facing;
     while (delta > Math.PI) delta -= Math.PI * 2;
     while (delta < -Math.PI) delta += Math.PI * 2;
-    this.facing += delta * Math.min(1, dt * 10);
+    this.facing += delta * (1 - Math.exp(-dt * 14));
     this.group.rotation.y = this.facing;
 
-    this.antennaLight.visible = Math.sin(performance.now() * 0.004) > 0.4;
-    this.chestLight.material.color.setHex(Math.sin(performance.now() * 0.002) > 0.6 ? COLORS.teal : 0x2a6a80);
+    const now = performance.now();
+    this.antennaLight.visible = Math.sin(now * 0.004) > 0.4;
+    if (this.loaded) {
+      // The GLB chest panel uses an emissive PBR material; pulse its intensity
+      // instead of changing the base colour.
+      const pulse = Math.sin(now * 0.002) > 0.6;
+      this.chestLight.material.emissiveIntensity = pulse ? 2.6 : 0.4;
+    } else {
+      this.chestLight.material.color.setHex(Math.sin(now * 0.002) > 0.6 ? COLORS.teal : 0x2a6a80);
+    }
   }
 }

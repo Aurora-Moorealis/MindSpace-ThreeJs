@@ -10,8 +10,11 @@ import { icon } from './icons.js';
 
 const CONTROLS = [
   ['W A S D / Arrows', 'Move the astronaut'],
+  ['Shift (hold)', 'Sprint while moving'],
   ['E', 'Interact, inspect a machine, start a scan'],
-  ['1 / 2 / 3', 'Time speed ×1 / ×5 / ×10'],
+  ['1–5 / Wheel', 'Select inventory slot (Shift+Wheel zoom)'],
+  ['Q', 'Drop item from selected inventory slot'],
+  ['F', 'Refine selected mineral for ISRU resources'],
   ['P', 'Pause the mission clock'],
   ['Esc', 'Close a panel or open pause'],
   ['M', 'Mute / unmute sound'],
@@ -60,7 +63,7 @@ export class PauseMenu {
           <div class="section-title"><span>CONTROLS</span><span>DESKTOP</span></div>
           ${controlsMarkup()}
         </div>
-        <footer class="pause-foot">The mission is offline and single-player. No progress is saved; loading the page starts a fresh outpost.</footer>
+        <footer class="pause-foot">${STRINGS['ui.pauseSaveNote']}</footer>
       </section>
     `;
     this.host.append(this.node);

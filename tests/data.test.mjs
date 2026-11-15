@@ -7,6 +7,7 @@ import { MACHINES } from '../src/data/machines.js';
 import { POIS } from '../src/data/pois.js';
 import { SUBMISSIONS } from '../src/data/submissions.js';
 import { SOURCES } from '../src/data/sources.js';
+import { MINERALS, MINERAL_VEINS, NASA_PROTOTYPE_TRUCK } from '../src/data/minerals.js';
 import { STRINGS } from '../src/data/strings.js';
 import { DEMO_PRESETS } from '../src/data/demo-states.js';
 
@@ -97,4 +98,15 @@ test('presets target a radiation window within six hours', () => {
     assert.ok(next, `${preset.id} has no future storm`);
     assert.ok(next.onset - preset.tick <= 6, `${preset.id} storm is too far away`);
   }
+});
+
+test('four lunar minerals and NASA truck prototype cite real NASA sources', () => {
+  const mineralList = Object.values(MINERALS);
+  assert.equal(mineralList.length, 4);
+  for (const mineral of mineralList) {
+    assert.ok(SOURCES[mineral.source]?.real_data, `${mineral.id} missing NASA source`);
+    assert.ok(mineral.mineSeconds > 0);
+  }
+  assert.ok(MINERAL_VEINS.length >= 4);
+  assert.ok(SOURCES[NASA_PROTOTYPE_TRUCK.source]?.real_data);
 });

@@ -13,6 +13,7 @@ import {
   box,
   cylinder,
   glowBar,
+  glowMaterial,
   material,
   rounded,
   sphere,
@@ -861,6 +862,8 @@ export function buildHoloTable() {
 
 export function buildPoi(poi) {
   const group = new THREE.Group();
+  let missionState = 'pending';
+  let missionCurrent = false;
   const ringMaterialFilled = new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false });
   const ringMaterialEmpty = new THREE.MeshBasicMaterial({ color: 0x214152, toneMapped: false });
   const segments = [];
@@ -897,17 +900,28 @@ export function buildPoi(poi) {
       opacity: 0.18,
       side: THREE.DoubleSide,
       depthWrite: false,
+      depthTest: false,
       blending: THREE.AdditiveBlending,
     })
   );
   beacon.position.y = 4;
+  beacon.renderOrder = 24;
   group.add(beacon);
   const light = sphere(0.12, 8, COLORS.teal, {
-    material: new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false }),
+    material: new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false, depthTest: false }),
     castShadow: false,
   });
   light.position.y = 2.0;
+  light.renderOrder = 25;
   group.add(light);
+  const currentDiamond = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.26, 0),
+    new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false, depthTest: false })
+  );
+  currentDiamond.position.y = 5.4;
+  currentDiamond.visible = false;
+  currentDiamond.renderOrder = 26;
+  group.add(currentDiamond);
   const pole = cylinder(0.03, 0.03, 2.2, 5, COLORS.metal);
   pole.position.set(1.4, 1.1, -1.1);
   group.add(pole);
@@ -933,19 +947,300 @@ export function buildPoi(poi) {
     group,
     colliders: [],
     labelHeight: 2.9,
-    parts: { segments, ringMaterialFilled, ringMaterialEmpty, beacon, light, flag, drill },
+    parts: { segments, ringMaterialFilled, ringMaterialEmpty, beacon, light, flag, drill, currentDiamond },
+    setMissionState(state, current) {
+      missionState = state;
+      missionCurrent = Boolean(current);
+      const color =
+        state === 'reported' ? COLORS.green : state === 'sampled' ? COLORS.amber : COLORS.teal;
+      beacon.material.color.setHex(color);
+      light.material.color.setHex(color);
+      ringMaterialFilled.color.setHex(color);
+      currentDiamond.material.color.setHex(color);
+      currentDiamond.visible = missionCurrent;
+      light.scale.setScalar(missionCurrent ? 1.6 : 1);
+      beacon.material.opacity = missionCurrent ? 0.26 : state === 'reported' ? 0.06 : 0.16;
+    },
     setProgress(progress, scanned) {
       const filled = Math.round(progress * segments.length);
       segments.forEach((segment, i) => {
         segment.material = scanned || i < filled ? ringMaterialFilled : ringMaterialEmpty;
       });
-      const color = scanned ? COLORS.green : COLORS.teal;
-      beacon.material.color.setHex(color);
-      light.material.color.setHex(color);
-      beacon.material.opacity = scanned ? 0.10 : 0.16 + Math.sin(performance.now() * 0.002) * 0.04;
     },
     update(dt) {
       flag.rotation.y = Math.sin(performance.now() * 0.001) * 0.08;
+      if (missionCurrent) {
+        currentDiamond.rotation.y += dt * 2.2;
+        currentDiamond.position.y = 5.4 + Math.sin(performance.now() * 0.003) * 0.14;
+      }
+      const base = missionCurrent ? 0.24 : missionState === 'reported' ? 0.06 : 0.14;
+      const amplitude = missionCurrent ? 0.08 : missionState === 'reported' ? 0 : 0.04;
+      beacon.material.opacity = base + Math.sin(performance.now() * 0.0024) * amplitude;
+    },
+  };
+}
+
+export function buildMineralVein(vein, mineral) {
+  const group = new THREE.Group();
+  const rand = seededRandom(vein.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0));
+
+  // Basalt outcrop base.
+  const baseGeo = new THREE.DodecahedronGeometry(0.95, 0);
+  const base = new THREE.Mesh(baseGeo, material(COLORS.moonDark, { roughness: 0.92 }));
+  base.scale.set(1.25, 0.52, 1.15);
+  base.position.y = 0.25;
+  base.castShadow = true;
+  base.receiveShadow = true;
+  group.add(base);
+
+  // Crystal / ore clusters.
+  const oreMat = material(mineral.color, {
+    roughness: 0.32,
+    metalness: mineral.id === 'ilmenite' ? 0.55 : 0.18,
+    emissive: mineral.emissive,
+    emissiveIntensity: 0.55,
+  });
+  const crystals = [];
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (i / 6) * Math.PI * 2 + rand() * 0.4;
+    const dist = i === 0 ? 0.05 : 0.35 + rand() * 0.42;
+    const h = 0.55 + rand() * 0.55;
+    const r = 0.14 + rand() * 0.11;
+    const shard = new THREE.Mesh(new THREE.ConeGeometry(r, h, 5), oreMat);
+    shard.position.set(Math.cos(angle) * dist, 0.36 + h * 0.32, Math.sin(angle) * dist);
+    shard.rotation.set((rand() - 0.5) * 0.5, rand() * Math.PI, (rand() - 0.5) * 0.5);
+    shard.castShadow = true;
+    group.add(shard);
+    crystals.push(shard);
+  }
+
+  // Mining progress ring on the ground.
+  const segCount = 14;
+  const ringFilled = new THREE.MeshBasicMaterial({ color: mineral.color, toneMapped: false });
+  const ringEmpty = new THREE.MeshBasicMaterial({ color: 0x1b2d3b, toneMapped: false });
+  const segments = [];
+  for (let i = 0; i < segCount; i += 1) {
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.08), ringEmpty);
+    const angle = (i / segCount) * Math.PI * 2;
+    seg.position.set(Math.cos(angle) * 1.4, 0.06, Math.sin(angle) * 1.4);
+    seg.rotation.y = -angle;
+    group.add(seg);
+    segments.push(seg);
+  }
+
+  return {
+    group,
+    colliders: [{ x: 0, z: 0, w: 1.8, d: 1.8 }],
+    labelHeight: 2.0,
+    setProgress(progress) {
+      const filled = Math.round(progress * segments.length);
+      for (let i = 0; i < segments.length; i += 1) {
+        segments[i].material = i < filled ? ringFilled : ringEmpty;
+      }
+    },
+    update() {},
+  };
+}
+
+export function buildNasaTruck(proto) {
+  const group = new THREE.Group();
+
+  // Heavy 12-wheel Chariot chassis deck.
+  const chassis = rounded(2.4, 0.28, 4.6, 0.06, COLORS.darkMetal);
+  chassis.position.y = 0.72;
+  group.add(chassis);
+
+  // Gold thermal foil lower skirt.
+  const foil = box(2.2, 0.22, 3.8, 0xc79a4a, {
+    material: material(0xc79a4a, { roughness: 0.35, metalness: 0.6 }),
+  });
+  foil.position.y = 0.56;
+  group.add(foil);
+
+  // 12 wheels (3 bogie pairs per side = 6 wheels per side).
+  const wheelMat = material(0x1f242c, { roughness: 0.85 });
+  const hubMat = material(0xc79a4a, { roughness: 0.4, metalness: 0.6 });
+  for (const side of [-1, 1]) {
+    for (const z of [-1.75, -1.05, -0.2, 0.5, 1.3, 2.0]) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.28, 14), wheelMat);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(side * 1.28, 0.42, z);
+      wheel.castShadow = true;
+      group.add(wheel);
+
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.31, 10), hubMat);
+      hub.rotation.z = Math.PI / 2;
+      hub.position.set(side * 1.28, 0.42, z);
+      group.add(hub);
+    }
+  }
+
+  // Forward pressurized truck cab.
+  const cab = rounded(2.25, 1.45, 2.35, 0.14, COLORS.white);
+  cab.position.set(0, 1.58, 0.85);
+  group.add(cab);
+
+  // Forward-angled panoramic cockpit window (SEV signature look).
+  const windshield = box(1.9, 0.72, 0.16, COLORS.glass, {
+    material: material(COLORS.glass, { roughness: 0.18, metalness: 0.2, emissive: 0x16445a, emissiveIntensity: 0.5 }),
+    castShadow: false,
+  });
+  windshield.position.set(0, 1.66, 2.02);
+  windshield.rotation.x = 0.24;
+  group.add(windshield);
+
+  // Side cab windows.
+  for (const side of [-1, 1]) {
+    const sideWin = box(0.08, 0.55, 1.1, COLORS.glass, {
+      material: material(COLORS.glass, { roughness: 0.18, emissive: 0x16445a, emissiveIntensity: 0.4 }),
+      castShadow: false,
+    });
+    sideWin.position.set(side * 1.13, 1.72, 1.15);
+    group.add(sideWin);
+  }
+
+  // NASA-style blue & red livery stripe.
+  const stripe = box(2.3, 0.12, 2.2, 0x2a66c9, { castShadow: false });
+  stripe.position.set(0, 1.12, 0.85);
+  group.add(stripe);
+
+  // Rear cargo/utility truck bed + suitports.
+  const bed = rounded(2.2, 0.55, 1.9, 0.06, COLORS.metal);
+  bed.position.set(0, 1.12, -1.35);
+  group.add(bed);
+
+  for (const side of [-0.52, 0.52]) {
+    const suitport = cylinder(0.32, 0.34, 0.24, 12, COLORS.darkMetal);
+    suitport.rotation.x = Math.PI / 2;
+    suitport.position.set(side, 1.48, -0.35);
+    group.add(suitport);
+  }
+
+  // Mast camera / lidar head.
+  const mast = cylinder(0.05, 0.06, 1.0, 8, COLORS.metal);
+  mast.position.set(-0.7, 2.55, -1.4);
+  group.add(mast);
+  const head = box(0.36, 0.18, 0.22, COLORS.white);
+  head.position.set(-0.7, 3.05, -1.4);
+  group.add(head);
+  const lens = glowBar(0.14, 0.08, 0.04, COLORS.teal);
+  lens.position.set(-0.7, 3.05, -1.28);
+  group.add(lens);
+
+  // Headlights.
+  for (const side of [-0.68, 0.68]) {
+    const lamp = glowBar(0.24, 0.1, 0.06, COLORS.warm);
+    lamp.position.set(side, 1.08, 2.04);
+    group.add(lamp);
+  }
+
+  // Side nameplate sign.
+  const signTex = makeCanvasTexture(512, 128, (ctx, w, h) => {
+    ctx.fillStyle = '#0a1626';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#4de2ff';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(4, 4, w - 8, h - 8);
+    ctx.fillStyle = '#eef5ff';
+    ctx.font = '700 44px "Rajdhani", sans-serif';
+    ctx.fillText('NASA SEV · CHARIOT', 24, 58);
+    ctx.fillStyle = '#ffb347';
+    ctx.font = '600 28px "Rajdhani", sans-serif';
+    ctx.fillText('12-WHEEL LUNAR PROTOTYPE', 24, 98);
+  });
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.75, 0.44),
+    new THREE.MeshBasicMaterial({ map: signTex, toneMapped: false })
+  );
+  sign.position.set(-1.14, 1.24, -1.35);
+  sign.rotation.y = -Math.PI / 2;
+  group.add(sign);
+
+  return {
+    group,
+    colliders: [{ x: 0, z: 0, w: 3.2, d: 5.2 }],
+    labelHeight: 3.4,
+    update(dt) {
+      head.rotation.y = Math.sin(performance.now() * 0.0008) * 0.45;
+    },
+  };
+}
+
+export function buildIceMelter() {
+  const group = basePad(2.2, 1.9);
+
+  // Thermal melting drum.
+  const drum = cylinder(0.55, 0.62, 1.35, 16, COLORS.darkMetal);
+  drum.position.set(-0.35, 0.88, 0);
+  group.add(drum);
+
+  // Glowing amber heating coil around the melting chamber.
+  const coil = new THREE.Mesh(
+    new THREE.TorusGeometry(0.61, 0.045, 8, 20),
+    glowMaterial(COLORS.amber)
+  );
+  coil.rotation.x = Math.PI / 2;
+  coil.position.set(-0.35, 0.72, 0);
+  group.add(coil);
+
+  // Translucent cyan liquid reservoir tank.
+  const tankShell = cylinder(0.38, 0.38, 1.1, 14, COLORS.glass, {
+    material: material(COLORS.glass, { transparent: true, opacity: 0.42, roughness: 0.15 }),
+  });
+  tankShell.position.set(0.45, 0.76, 0);
+  group.add(tankShell);
+
+  const liquidCore = cylinder(0.31, 0.31, 0.85, 12, 0x38d9ff, {
+    material: material(0x38d9ff, { emissive: 0x1688b8, emissiveIntensity: 0.7, roughness: 0.2 }),
+  });
+  liquidCore.position.set(0.45, 0.65, 0);
+  group.add(liquidCore);
+
+  // Top ice hopper.
+  const hopper = cylinder(0.46, 0.32, 0.35, 12, COLORS.metal);
+  hopper.position.set(-0.35, 1.72, 0);
+  group.add(hopper);
+
+  // Screen.
+  const screen = standardScreen('ICE MELTER', ['H2O FEEDSTOCK', 'TO HYDROPONICS', 'LCROSS ISRU'], '#4de2ff');
+  screen.position.set(0, 1.18, 0.82);
+  group.add(screen);
+
+  // Liquid delivery pipe connecting Ice Melter -> Hydroponics plants (+X direction).
+  const pipe = cylinder(0.065, 0.065, 2.75, 10, 0x4b7088);
+  pipe.rotation.z = Math.PI / 2;
+  pipe.position.set(2.15, 0.55, 0);
+  group.add(pipe);
+
+  // Translucent flow jacket & animated liquid droplets moving into the plants.
+  const flowBeads = [];
+  const beadMat = glowMaterial(0x52e8ff);
+  for (let i = 0; i < 5; i += 1) {
+    const bead = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6), beadMat);
+    bead.position.set(0.85 + i * 0.52, 0.55, 0);
+    group.add(bead);
+    flowBeads.push({ mesh: bead, phase: i / 5 });
+  }
+
+  const light = statusLight(COLORS.teal, 2.05);
+  light.position.set(-0.35, 2.0, 0);
+  group.add(light);
+
+  return {
+    group,
+    colliders: [{ x: 0, z: 0, w: 2.2, d: 1.9 }],
+    labelHeight: 2.35,
+    update(dt, sim) {
+      const boosting = (sim?.state?.iceMeltBoostUntil ?? -1) > (sim?.state?.tick ?? 0);
+      const flowSpeed = boosting ? 0.95 : 0.38;
+      const t = performance.now() * 0.001;
+      for (const bead of flowBeads) {
+        const p = (t * flowSpeed + bead.phase) % 1;
+        bead.mesh.position.x = 0.85 + p * 2.65;
+        bead.mesh.scale.setScalar(boosting ? 1.25 : 0.85);
+      }
+      liquidCore.scale.y = 0.78 + Math.sin(t * 2.1) * 0.08;
+      light.material.color.setHex(boosting ? COLORS.green : COLORS.teal);
     },
   };
 }
