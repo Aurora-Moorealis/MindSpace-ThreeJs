@@ -481,13 +481,15 @@ export class World {
     this.astronaut.update(dt, moving);
     this.nearestId = nearest?.id ?? null;
 
+    const now = performance.now();
+
     // Highlight ring.
     if (nearest && nearest.type !== 'poi') {
       this.highlight.visible = true;
       this.highlight.position.set(nearest.position.x, nearest.position.y + 0.14, nearest.position.z);
-      const pulse = 1 + Math.sin(performance.now() * 0.004) * 0.06;
+      const pulse = 1 + Math.sin(now * 0.004) * 0.06;
       this.highlight.scale.setScalar(pulse);
-      this.highlight.material.opacity = 0.45 + Math.sin(performance.now() * 0.004) * 0.15;
+      this.highlight.material.opacity = 0.45 + Math.sin(now * 0.004) * 0.15;
     } else {
       this.highlight.visible = false;
     }
@@ -530,7 +532,11 @@ export class World {
       if (!visual) continue;
       const scanned = sim.state.scans.includes(poi.id);
       const progress = scanTarget === poi.id ? scanProgress : scanned ? 1 : 0;
-      visual.setProgress(progress, scanned);
+      if (visual._lastProgress !== progress || visual._lastScanned !== scanned) {
+        visual._lastProgress = progress;
+        visual._lastScanned = scanned;
+        visual.setProgress(progress, scanned);
+      }
       visual.update?.(dt);
     }
 
@@ -541,19 +547,21 @@ export class World {
       if (!label) continue;
       const dist = Math.hypot(player.x - item.position.x, player.z - item.position.z);
       const maxDist = item.type === 'poi' ? 42 : 12.5;
-      label.sprite.visible = dist < maxDist;
-      label.material.opacity = Math.min(1, Math.max(0.12, 1.25 - dist / maxDist));
-      const wantDepth = this.nearestId !== item.id && item.type !== 'poi';
+      const visible = dist < maxDist;
+      if (label.sprite.visible !== visible) label.sprite.visible = visible;
+      if (!visible) continue;
+      const isNearest = this.nearestId === item.id;
+      const opacity = isNearest ? 1 : Math.min(1, Math.max(0.12, 1.25 - dist / maxDist));
+      if (Math.abs(label.material.opacity - opacity) > 0.01) label.material.opacity = opacity;
+      const wantDepth = !isNearest && item.type !== 'poi';
       if (label.material.depthTest !== wantDepth) label.material.depthTest = wantDepth;
-      if (this.nearestId === item.id) {
-        label.sprite.renderOrder = 30;
-        label.material.opacity = 1;
-      }
+      const wantOrder = isNearest ? 30 : 25;
+      if (label.sprite.renderOrder !== wantOrder) label.sprite.renderOrder = wantOrder;
     }
 
     // Objective beacon.
     if (this.objective.group.visible) {
-      const t = performance.now() * 0.001;
+      const t = now * 0.001;
       this.objective.diamond.rotation.y += dt * 1.2;
       this.objective.diamond.position.y = 5.6 + Math.sin(t * 2.2) * 0.15;
       this.objective.ring.rotation.z += dt * 0.8;

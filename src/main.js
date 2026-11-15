@@ -466,6 +466,16 @@ function setupInput() {
     app.keys.delete(event.code);
   });
 
+  window.addEventListener(
+    'wheel',
+    (event) => {
+      if (app.phase === 'game' && !app.paused && !app.panel && !hasBlockingModal()) {
+        stage?.adjustZoom(event.deltaY > 0 ? 2 : -2);
+      }
+    },
+    { passive: true }
+  );
+
   window.addEventListener('blur', () => {
     app.keys.clear();
     if (app.phase === 'game' && !app.paused && !app.panel && !evaluationScreen?.isOpen() && !sourcesModal?.isOpen() && !controlsModal?.isOpen()) {
@@ -1082,7 +1092,7 @@ function updateObjective(force = false) {
   }
 }
 
-function refreshHud() {
+function refreshHud(cachedNearest = undefined) {
   if (!hud || !sim) return;
   const roomId = world.getRoomAt(app.player.x, app.player.z);
   let zoneLabel = 'HABITAT';
@@ -1090,7 +1100,11 @@ function refreshHud() {
   else if (app.inShelter && sim.state.shelterLocked) zoneLabel = 'STORM SHELTER';
   else zoneLabel = STRINGS[ROOMS[roomId]?.key] ?? 'HABITAT';
   const suppress = app.phase !== 'game' || app.paused || app.panel;
-  const nearest = suppress ? null : world.getNearestInteractable(app.player, 3.6);
+  const nearest = suppress
+    ? null
+    : cachedNearest !== undefined
+      ? cachedNearest
+      : world.getNearestInteractable(app.player, 3.6);
   app.nearest = nearest;
   app.interaction = nearest ? world.describeInteraction(nearest) : null;
   hud.update(sim, {
@@ -1157,8 +1171,8 @@ function updateGameplay(dt, rawDt) {
       dx /= len;
       dz /= len;
       const speed = 5.0 * sim.stats.movement_speed;
-      const total = speed * rawDt;
-      const steps = Math.max(1, Math.ceil(rawDt / 0.05));
+      const total = speed * dt;
+      const steps = Math.max(1, Math.ceil(dt / 0.05));
       for (let i = 0; i < steps; i += 1) {
         world.move(app.player, (dx * total) / steps, (dz * total) / steps, 0.55);
       }
@@ -1171,6 +1185,7 @@ function updateGameplay(dt, rawDt) {
 
   world.astronaut.setPosition(app.player.x, app.player.z);
   updateScanAndInteractions(dt);
+  if (app.scan) hud?.updateScan?.({ label: app.scan.label, progress: app.scan.progress });
 
   if (!app.paused) {
     app.tickAccum += rawDt * app.speed;
@@ -1192,7 +1207,11 @@ function updateGameplay(dt, rawDt) {
   updateObjective();
   const storm = sim.getStorm();
   const stormVisual = storm ? Math.min(1, Math.max(0, storm.intensityNow / 18)) : 0;
-  stormOverlay.style.opacity = (stormVisual * 0.85).toFixed(2);
+  const stormOpacity = (stormVisual * 0.85).toFixed(2);
+  if (app.lastStormOpacity !== stormOpacity) {
+    app.lastStormOpacity = stormOpacity;
+    stormOverlay.style.opacity = stormOpacity;
+  }
   stage.setEnvironment({
     time: app.time,
     storm: stormVisual,
@@ -1204,7 +1223,7 @@ function updateGameplay(dt, rawDt) {
   const suppress = app.phase !== 'game' || app.paused || app.panel;
   const nearest = suppress ? null : world.getNearestInteractable(app.player, 3.6);
   app.nearest = nearest;
-  world.update(rawDt, sim, {
+  world.update(dt, sim, {
     nearest,
     scanProgress: app.scan?.progress ?? 0,
     scanTarget: app.scan?.type === 'scan' ? app.scan.targetId : null,
@@ -1214,7 +1233,7 @@ function updateGameplay(dt, rawDt) {
     storm: stormVisual,
   });
 
-  stage.updateCamera(rawDt, {
+  stage.updateCamera(dt, {
     target: cameraTarget.set(app.player.x, 0.9, app.player.z),
     outside: app.outside,
   });
@@ -1222,7 +1241,7 @@ function updateGameplay(dt, rawDt) {
   app.uiTimer += rawDt;
   if (app.uiTimer >= 0.1) {
     app.uiTimer = 0;
-    refreshHud();
+    refreshHud(nearest);
   }
   app.panelTimer += rawDt;
   if (app.panelTimer >= 0.5) {
