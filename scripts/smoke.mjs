@@ -37,6 +37,38 @@ await page.waitForTimeout(2600);
 await page.screenshot({ path: `${outDir}/01-title.png` });
 console.log('title', await page.evaluate(() => window.__outpost?.app?.phase));
 
+// Evaluators reach the repository from a labelled link pinned to the corner.
+const repoLink = await page.evaluate(() => {
+  const link = document.querySelector('.title-repo-link');
+  if (!link) return null;
+  const box = link.getBoundingClientRect();
+  return {
+    href: link.getAttribute('href') ?? '',
+    target: link.getAttribute('target') ?? '',
+    rel: link.getAttribute('rel') ?? '',
+    label: link.textContent?.trim() ?? '',
+    viewportRight: Math.round(window.innerWidth - box.right),
+    viewportBottom: Math.round(window.innerHeight - box.bottom),
+  };
+});
+if (!repoLink) {
+  errors.push('title: .title-repo-link is missing');
+} else {
+  if (repoLink.href !== 'https://github.com/Aurora-Moorealis/MindSpace-ThreeJs') {
+    errors.push(`title: repository link points to ${repoLink.href}`);
+  }
+  if (repoLink.target !== '_blank' || !repoLink.rel.includes('noopener') || !repoLink.rel.includes('noreferrer')) {
+    errors.push(`title: repository link must open safely in a new tab (${repoLink.target}, ${repoLink.rel})`);
+  }
+  if (repoLink.label !== 'GitHub') errors.push(`title: repository link label is "${repoLink.label}"`);
+  if (repoLink.viewportRight > 48 || repoLink.viewportBottom > 96) {
+    errors.push(
+      `title: repository link is not pinned to the bottom-right (${repoLink.viewportRight}px, ${repoLink.viewportBottom}px)`
+    );
+  }
+}
+console.log('title repo link', repoLink);
+
 await page.locator('[data-action="new"]').click();
 await page.waitForTimeout(1100);
 await page.screenshot({ path: `${outDir}/02-intro.png` });

@@ -40,11 +40,20 @@ const paths = {
   pickaxe: '<path d="m14.5 5.5 4 4M4.5 19.5 15 9M11 4.5c3.5.5 6.5 3.5 8.5 8.5l-2.5-2.5-3.5-3.5L11 4.5Z"/>',
   mineral: '<path d="M12 3 4.5 8.5 7 19.5h10l2.5-11L12 3Z"/><path d="M12 3v16.5M4.5 8.5h15"/>',
   truck: '<rect x="2.5" y="7" width="12.5" height="8" rx="1.5"/><path d="M15 9h4l2.5 3v3H15V9Z"/><circle cx="6.5" cy="17" r="2"/><circle cx="11.5" cy="17" r="2"/><circle cx="18" cy="17" r="2"/>',
+  github:
+    '<path fill-rule="evenodd" d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.87-.01-1.71-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.34 1.12 2.91.86.09-.66.35-1.12.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05a9.2 9.2 0 0 1 5 0c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/>',
 };
+
+// Brand marks are solid, so they opt out of the stroke treatment used by the
+// rest of the mission-control icon set.
+const filledIcons = new Set(['github']);
 
 export function icon(name, size = 18, className = '') {
   const d = paths[name] ?? paths.target;
-  return `<svg class="icon ${className}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const paint = filledIcons.has(name)
+    ? 'fill="currentColor" stroke="none"'
+    : 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
+  return `<svg class="icon ${className}" width="${size}" height="${size}" viewBox="0 0 24 24" ${paint} aria-hidden="true">${d}</svg>`;
 }
 
 export function iconForResource(id) {
