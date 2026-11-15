@@ -14,7 +14,17 @@ export class TitleScreen {
     this.host = host;
     this.callbacks = callbacks;
     this.node = null;
+    this.mapInfo = null;
     this.confirmTimer = null;
+  }
+
+  setMapInfo(mapData) {
+    this.mapInfo = mapData;
+    if (!this.node || !mapData) return;
+    const input = this.node.querySelector('#title-seed-input');
+    const biome = this.node.querySelector('#title-biome-name');
+    if (input) input.value = String(mapData.seed);
+    if (biome) biome.textContent = mapData.biome?.name ?? 'Artemis Highlands';
   }
 
   show({ save = null, error = null } = {}) {
@@ -33,7 +43,6 @@ export class TitleScreen {
     const primaryAction = hasSave ? 'continue' : 'new';
     const saveLine = this._saveLine({ save, unavailable, unreadable });
     const saveClass = unavailable || unreadable ? 'is-warning' : complete ? 'is-complete' : 'is-active';
-
     this.node = document.createElement('div');
     this.node.className = 'screen title-screen';
     this.node.innerHTML = `
@@ -41,27 +50,29 @@ export class TitleScreen {
       <div class="title-wrap">
         <div class="title-main">
           <div class="title-kicker"><span class="kicker-dot"></span> NASA SPACE APPS · JUNIOR ASTRONAUT MISSION TRAINER</div>
-          <h1 class="game-title">OUTPOST<span>LUNAR</span></h1>
-          <p class="title-tagline">Keep the outpost alive. Finish the science.</p>
-          <div class="title-meta">SOLO · REAL-TIME · 4 RESOURCES · 3 SURVEY SITES · ARCHIVED NASA DATA</div>
+          <h1 class="game-title">MIND<span>SPACE</span></h1>
+          <p class="title-tagline">Keep the lunar outpost alive. Finish the science.</p>
+          <div class="title-meta">SOLO · REAL-TIME (1s = 1m) · 4 RESOURCES · 3 SURVEY SITES · NASA DATA</div>
 
           <div class="mission-select">
             <button class="mission-card selected" data-mission="artemis">
-              <div class="mission-card-top"><span class="mission-tag">PLAYABLE</span><span class="mission-check">${icon('check', 13)}</span></div>
+              <div class="mission-card-top"><span class="mission-tag">ACTIVE SITE</span><span class="mission-check">${icon('check', 13)}</span></div>
               <strong>ARTEMIS RIDGE</strong>
-              <span>Outpost survival · 5 rooms · 8 machines</span>
-              ${saveLine ? `<em class="mission-save-status ${saveClass}">${escapeHtml(saveLine)}</em>` : ''}
+<span>Outpost survival · 5 rooms · 9 machines · ISRU mining</span>
+${saveLine ? `<em class="mission-save-status ${saveClass}">${escapeHtml(saveLine)}</em>` : ''}
             </button>
             <button class="mission-card disabled" disabled>
               <div class="mission-card-top"><span class="mission-tag">COMING SOON</span></div>
               <strong>SHACKLETON CRATER</strong>
-              <span>Permanent shadow · ice mining</span>
+              <span>Permanent shadow · deep ice ops</span>
             </button>
-            <button class="mission-card disabled" disabled>
-              <div class="mission-card-top"><span class="mission-tag">COMING SOON</span></div>
-              <strong>MARE TRANQUILLITATIS</strong>
-              <span>Historic landing site · dust ops</span>
-            </button>
+          </div>
+
+          <div class="seed-bar">
+            <label class="seed-label" for="title-seed-input">SECTOR SEED</label>
+            <input id="title-seed-input" class="seed-input" type="text" maxlength="20" value="${this.mapInfo?.seed ?? ''}" aria-label="Map seed" />
+            <span class="seed-biome" id="title-biome-name">${escapeHtml(this.mapInfo?.biome?.name ?? 'Artemis Highlands')}</span>
+            <button class="seed-btn" type="button" data-action="random-seed" title="Generate new procedural terrain">↻ NEW MAP</button>
           </div>
 
           <div class="title-actions">
@@ -72,45 +83,40 @@ export class TitleScreen {
                 : ''
             }
             <div class="demo-actions">
-              <button class="btn btn-secondary" data-action="demo-mid">${icon('storm', 15)} DEMO · MID-MISSION</button>
-              <button class="btn btn-secondary" data-action="demo-final">${icon('comms', 15)} DEMO · FINAL HOUR</button>
+              <button class="btn btn-secondary" data-action="demo-mid">${icon('storm', 15)} DEMO · MID</button>
+              <button class="btn btn-secondary" data-action="demo-final">${icon('comms', 15)} DEMO · FINAL</button>
             </div>
           </div>
           <div class="title-links">
             <button class="link-btn" data-action="sources">${icon('source', 13)} DATA SOURCES</button>
             <button class="link-btn" data-action="controls">${icon('target', 13)} CONTROLS</button>
-            <span class="title-version">BUILD 0.1 · THREE.JS</span>
+            <span class="title-version">MINDSPACE · THREE.JS</span>
           </div>
-          <p class="title-disclaimer">An independent educational game inspired by the NASA Space Apps Challenge. NASA data is cited, not endorsed. Not an official NASA product.</p>
+          <p class="title-disclaimer">Independent educational game inspired by the NASA Space Apps Challenge. NASA data is cited, not endorsed.</p>
         </div>
 
         <aside class="title-side">
           <div class="side-card side-brief">
             <div class="side-eyebrow"><span class="kicker-dot"></span> MISSION BRIEF</div>
-            <p>One astronaut. Five rooms. Eight machines. Keep oxygen, water, food and power moving while you survey three sites and send the reports home.</p>
+            <p>Manage oxygen, water, food and power across five habitat rooms while surveying three lunar sites and transmitting reports.</p>
             <div class="side-stats">
-              <div><strong>300</strong><span>mission hours</span></div>
-              <div><strong>4</strong><span>core resources</span></div>
-              <div><strong>3</strong><span>reports to win</span></div>
+              <div><strong>300</strong><span>hours</span></div>
+              <div><strong>4</strong><span>resources</span></div>
+              <div><strong>3</strong><span>reports</span></div>
             </div>
           </div>
           <div class="side-card side-data">
-            <div class="side-eyebrow"><span class="kicker-dot"></span> OPEN DATA</div>
+            <div class="side-eyebrow"><span class="kicker-dot"></span> ARCHIVED NASA DATA</div>
             <div class="data-line"><span>01</span> DONKI CME / SEP / GST</div>
-            <div class="data-line"><span>02</span> LRO CRaTER dose references</div>
-            <div class="data-line"><span>03</span> NASA BVAD life support</div>
-            <div class="data-badge">ARCHIVED · NO RUNTIME NETWORK</div>
-          </div>
-          <div class="side-card side-hint">
-            <div class="side-eyebrow"><span class="kicker-dot"></span> A NOTE ON THE CLOCK</div>
-            <p>At ×1, one game hour takes one real minute. Use ×5 or ×10 when you want the mission to move. Pause before you step away.</p>
+            <div class="data-line"><span>02</span> LRO CRaTER & BVAD</div>
+            <div class="data-badge">1s = 1 GAME MIN · PAUSE ANYTIME (P)</div>
           </div>
         </aside>
       </div>
       <div class="title-footer">
-        <span>THREE.JS ADAPTATION</span>
-        <span>ORIGINAL DESIGN · MINDSpace / OUTPOST LUNAR</span>
-        <span>DESKTOP KEYBOARD REQUIRED</span>
+        <span>MINDSPACE</span>
+        <span>ARTEMIS RIDGE · LUNAR SOUTH POLE</span>
+        <span>DESKTOP KEYBOARD & MOUSE</span>
       </div>
     `;
     this.host.append(this.node);
@@ -120,6 +126,14 @@ export class TitleScreen {
         if (button.dataset.confirmNew === 'true') this._onNewMission(button);
         else this.callbacks.onNewMission?.();
       });
+    });
+    const seedInput = this.node.querySelector('#title-seed-input');
+    seedInput?.addEventListener('change', () => {
+      const val = seedInput.value.trim();
+      if (val) this.callbacks.onSeedChange?.(val);
+    });
+    this.node.querySelector('[data-action="random-seed"]')?.addEventListener('click', () => {
+      this.callbacks.onRandomSeed?.();
     });
     this.node.querySelector('[data-action="demo-mid"]').addEventListener('click', () => this.callbacks.onDemo?.('demo_mid'));
     this.node.querySelector('[data-action="demo-final"]').addEventListener('click', () => this.callbacks.onDemo?.('demo_final'));
@@ -286,7 +300,7 @@ export class EvaluationScreen {
       <div class="eval-wrap">
         <header class="eval-head">
           <div class="eval-headline">
-            <div class="eval-kicker">${result.victory ? 'OUTPOST LUNAR · DEBRIEF' : 'OUTPOST LUNAR · INCIDENT REPORT'}</div>
+            <div class="eval-kicker">${result.victory ? 'MINDSPACE · DEBRIEF' : 'MINDSPACE · INCIDENT REPORT'}</div>
             <h1>${escapeHtml(result.title)}</h1>
             <p>${escapeHtml(result.subtitle)}</p>
           </div>

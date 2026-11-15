@@ -213,8 +213,10 @@ export function getMissionDay(tick) {
 }
 
 export function getClockLabel(tick) {
-  const hour = getHourOfDay(tick);
-  return `${String(hour).padStart(2, '0')}:00`;
+  const totalMinutes = Math.floor(Math.max(0, tick) * 60 + 1e-6);
+  const hour = (Math.floor(totalMinutes / 60) + ECONOMY.time.firstHour) % ECONOMY.time.solTicks;
+  const minute = totalMinutes % 60;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
 export function isDaylight(tick) {

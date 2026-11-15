@@ -561,7 +561,7 @@ export class BaseBuilder {
       }
       ctx.fillStyle = '#6ee7a8';
       ctx.font = '600 22px "Rajdhani", sans-serif';
-      ctx.fillText('DSN LINK OK · FORECAST ARCHIVE · OUTPOST LUNAR', 44, h - 44);
+      ctx.fillText('DSN LINK OK · FORECAST ARCHIVE · MINDSPACE', 44, h - 44);
     });
     const normal = new THREE.Vector3(Math.sin(rotation), 0, Math.cos(rotation));
     const backing = box(width + 0.14, height + 0.14, 0.07, COLORS.darkMetal);
@@ -733,7 +733,7 @@ export class BaseBuilder {
     this.addChair(-21.0, 11.8, Math.PI);
     this.addShelf(-29.0, 13.8, 1.8, Math.PI / 2);
     this.addCrate(-8.4, 14.2, 0.9, 0x536070, 0.2);
-    this.addPoster(-29.7, 9.0, Math.PI / 2, 'DEEP SPACE NETWORK', 'OUTPOST LUNAR');
+    this.addPoster(-29.7, 9.0, Math.PI / 2, 'DEEP SPACE NETWORK', 'MINDSPACE');
     this.addPlanter(-27.8, 3.8, 1.2, 0.7, Math.PI / 2);
     this.addWallScreen(-29.7, 6.4, Math.PI / 2, 2.8, 1.7, 'DSN OPERATIONS', 'LUNAR SOUTH POLE · ARCHIVE LINK');
     this.addWallScreen(-29.7, 11.6, Math.PI / 2, 1.7, 1.05, 'SURFACE WATCH', 'STORMS · DUST · COMMS');
@@ -772,7 +772,7 @@ export class BaseBuilder {
     this.addCrate(-9.0, 1.6, 0.7, 0x5e6674, 0.2);
     this.addPlanter(12.0, -1.7, 1.3, 0.7, 0);
     this.addPlanter(-17.0, 1.7, 1.3, 0.7, Math.PI);
-    this.addPoster(-29.7, 0.0, Math.PI / 2, 'OUTPOST LUNAR', 'MISSION DAY 1 · ARTEMIS RIDGE');
+    this.addPoster(-29.7, 0.0, Math.PI / 2, 'MINDSPACE', 'MISSION DAY 1 · ARTEMIS RIDGE');
 
     // Keep a few references for animation.
     this.animated.push(
