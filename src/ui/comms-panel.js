@@ -69,7 +69,7 @@ export class CommsPanel {
           <div class="comms-title">
             <div class="comms-logo">${icon('comms', 22)}</div>
             <div>
-              <div class="modal-eyebrow">DEEP SPACE NETWORK · OUTPOST LUNAR</div>
+              <div class="modal-eyebrow">DEEP SPACE NETWORK · MINDSPACE</div>
               <h2>COMMUNICATIONS</h2>
             </div>
           </div>

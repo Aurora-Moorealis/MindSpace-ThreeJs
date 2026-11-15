@@ -5,7 +5,7 @@
  */
 
 export const STRINGS = {
-  'game.title': 'OUTPOST LUNAR',
+  'game.title': 'MINDSPACE',
   'game.subtitle': 'Junior Astronaut Mission Trainer',
   'game.tagline': 'Keep the outpost alive. Finish the science.',
   'game.challenge': 'Inspired by the NASA Space Apps Challenge — Junior Astronaut Mission Trainer',

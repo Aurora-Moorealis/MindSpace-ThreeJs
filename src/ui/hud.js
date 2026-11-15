@@ -45,9 +45,9 @@ export class HUD {
       <div class="hud-scanlines" aria-hidden="true"></div>
       <header class="hud-top">
         <div class="hud-brand">
-          <div class="brand-mark">OL</div>
+          <div class="brand-mark">MS</div>
           <div class="brand-copy">
-            <div class="brand-title">OUTPOST LUNAR</div>
+            <div class="brand-title">MINDSPACE</div>
             <div class="brand-sub">ARTEMIS RIDGE · JUNIOR ASTRONAUT MISSION</div>
           </div>
         </div>

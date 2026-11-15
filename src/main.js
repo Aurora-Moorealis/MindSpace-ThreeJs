@@ -99,8 +99,8 @@ function createLoadingScreen() {
   const node = document.createElement('div');
   node.className = 'loading-screen';
   node.innerHTML = `
-    <div class="loading-mark">OL</div>
-    <div class="loading-title">OUTPOST LUNAR</div>
+    <div class="loading-mark">MS</div>
+    <div class="loading-title">MINDSPACE</div>
     <div class="loading-bar"><div></div></div>
     <div class="loading-detail">INITIALISING ARTEMIS RIDGE · LOADING NASA DATA ARCHIVE</div>
   `;
@@ -112,7 +112,7 @@ function showFatalError(error) {
   node.className = 'loading-screen';
   node.innerHTML = `
     <div class="loading-mark">!</div>
-    <div class="loading-title">OUTPOST LUNAR COULD NOT START</div>
+    <div class="loading-title">MINDSPACE COULD NOT START</div>
     <div class="loading-detail" style="max-width:560px;text-align:center;line-height:1.5">
       ${String(error?.message ?? error).replaceAll('<', '&lt;')}<br><br>
       This game needs a WebGL-capable desktop browser with JavaScript enabled.

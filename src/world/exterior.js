@@ -337,7 +337,7 @@ export class ExteriorBuilder {
       ctx.fillText('RIDGE', 34, 200);
       ctx.fillStyle = '#6ee7a8';
       ctx.font = '500 28px "Rajdhani", sans-serif';
-      ctx.fillText('OUTPOST LUNAR', 34, 250);
+      ctx.fillText('MINDSPACE', 34, 250);
     });
     const flagMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(2.2, 1.4),
