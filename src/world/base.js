@@ -772,7 +772,7 @@ export class BaseBuilder {
     this.addCrate(-9.0, 1.6, 0.7, 0x5e6674, 0.2);
     this.addPlanter(12.0, -1.7, 1.3, 0.7, 0);
     this.addPlanter(-17.0, 1.7, 1.3, 0.7, Math.PI);
-    this.addPoster(-29.7, 0.0, Math.PI / 2, 'MINDSPACE', 'SOL 1 · ARTEMIS RIDGE');
+    this.addPoster(-29.7, 0.0, Math.PI / 2, 'MINDSPACE', 'MISSION DAY 1 · ARTEMIS RIDGE');
 
     // Keep a few references for animation.
     this.animated.push(

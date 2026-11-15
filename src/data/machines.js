@@ -113,10 +113,11 @@ export const MACHINES = {
     kind: 'production',
     power: 2.6,
     inputs: { water: 0.2 },
-    outputs: { food: 0.95, o2: 0.35 },
+    outputs: { o2: 0.35 },
     throttle: { resource: 'food', above: 97 },
     conditionDecay: 0.16,
     dustAffected: false,
+    crops: true,
     sourceRefs: ['bvad'],
     real_data: false,
     upgrades: [

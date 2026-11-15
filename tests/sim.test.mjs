@@ -35,7 +35,55 @@ test('simulation is deterministic for identical action sequences', () => {
       sim.drainNotifications();
     }
   }
-  assert.deepEqual(a.snapshot(), b.snapshot());
+  assert.deepEqual(a.stateSnapshot(), b.stateSnapshot());
+});
+
+test('run snapshot round-trips state, ledger and presence', () => {
+  const sim = new GameSim();
+  sim.setPresence({ outside: true, inShelter: false });
+  for (let i = 0; i < 12; i += 1) {
+    sim.tick();
+    sim.drainNotifications();
+  }
+  sim.state.scans = ['site_a'];
+  sim.state.samples = ['site_a'];
+
+  const snapshot = sim.snapshot();
+  const restored = new GameSim();
+  assert.equal(restored.restore(snapshot), true);
+  assert.deepEqual(restored.stateSnapshot(), sim.stateSnapshot());
+  assert.deepEqual(restored.log.serialize(), sim.log.serialize());
+  assert.deepEqual(restored.presence, sim.presence);
+});
+
+test('restoring a snapshot continues the same deterministic run', () => {
+  const base = new GameSim();
+  base.setPresence({ outside: false, inShelter: false });
+  for (let i = 0; i < 20; i += 1) {
+    base.tick();
+    base.drainNotifications();
+  }
+  const snapshot = base.snapshot();
+  for (let i = 0; i < 15; i += 1) {
+    base.tick();
+    base.drainNotifications();
+  }
+  const expected = base.stateSnapshot();
+
+  const restored = new GameSim();
+  assert.equal(restored.restore(snapshot), true);
+  for (let i = 0; i < 15; i += 1) {
+    restored.tick();
+    restored.drainNotifications();
+  }
+  assert.deepEqual(restored.stateSnapshot(), expected);
+});
+
+test('restore rejects snapshots with removed content ids', () => {
+  const sim = new GameSim();
+  const snapshot = sim.snapshot();
+  snapshot.state.scans.push('missing_site');
+  assert.equal(new GameSim().restore(snapshot), false);
 });
 
 test('resources never exceed capacity and never go negative', () => {
@@ -137,7 +185,32 @@ test('solar tracking increases output and array wear', () => {
   assert.ok(sim.getWearRate('solar_array') > before);
 });
 
-test('three scans and three reports complete the mission', () => {
+test('relay passes follow the configured interval and phase', () => {
+  const sim = new GameSim();
+  sim.state.tick = 2;
+  assert.equal(sim.nextRelayTick(), 2);
+  assert.equal(sim.isRelayPass(2), true);
+  sim.state.tick = 3;
+  assert.equal(sim.nextRelayTick(), 6);
+  assert.equal(sim.isRelayPass(3), false);
+  assert.deepEqual(sim.getRelayStatus(), {
+    outage: false,
+    nextTick: 6,
+    inTicks: 3,
+    queued: 0,
+    interval: ECONOMY.comms.relayIntervalTicks,
+    phase: ECONOMY.comms.relayPhaseTicks,
+  });
+});
+
+test('dose is presented in mSv with the declared conversion', () => {
+  const sim = new GameSim();
+  sim.state.radiation = 12.5;
+  assert.equal(sim.getDoseMsv(), 31.25);
+  assert.equal(ECONOMY.radiation.deathDose * ECONOMY.radiation.msvPerPoint, ECONOMY.radiation.msvLimit);
+});
+
+test('three scans and three reports complete the mission only after the relay pass', () => {
   const sim = new GameSim();
   sim.setPresence({ outside: true, inShelter: false });
   for (const id of ['site_a', 'site_b', 'site_c']) {
@@ -148,29 +221,88 @@ test('three scans and three reports complete the mission', () => {
   for (const id of ['site_a', 'site_b', 'site_c']) {
     const report = sim.sendReport(id);
     assert.equal(report.ok, true);
+    assert.equal(report.queued, true);
   }
+  assert.equal(sim.state.over, null);
+  assert.equal(sim.state.reports.length, 0);
+  assert.equal(sim.state.reportQueue.length, 3);
+  assert.equal(sim.log.count(LOG_TYPES.REPORT), 0);
+
+  // The queue leaves on the first pass (tick 2).
+  settle(sim, ECONOMY.comms.relayIntervalTicks);
   assert.equal(sim.state.over, 'victory');
   assert.equal(sim.state.cause, 'mission_complete');
   assert.equal(sim.state.reports.length, 3);
+  assert.equal(sim.state.reportQueue.length, 0);
   assert.equal(sim.log.count(LOG_TYPES.REPORT), 3);
   // Science Delivery is auto-claimed with the victory beat.
   assert.equal(sim.state.submissions.science_delivery.status, 'claimed');
 });
 
+test('a queued report does not count as sent until the pass', () => {
+  const sim = new GameSim();
+  sim.setPresence({ outside: true, inShelter: false });
+  sim.completeScan('site_a');
+  sim.setPresence({ outside: false, inShelter: false });
+  const queued = sim.sendReport('site_a');
+  assert.equal(queued.ok, true);
+  assert.equal(queued.queued, true);
+  assert.equal(queued.nextRelayTick, 2);
+  assert.equal(sim.state.reports.length, 0);
+  assert.equal(sim.state.stats.reportsSent, 0);
+  assert.equal(sim.state.samples.includes('site_a'), false);
+  assert.equal(sim.state.reportQueue.length, 1);
+  assert.equal(sim.log.count(LOG_TYPES.REPORT), 0);
+  assert.equal(sim.log.countPayload(LOG_TYPES.NOTE, (payload) => payload.note === 'report_queued'), 1);
+});
+
+test('a DSN outage keeps queued reports for the next open pass', () => {
+  const sim = new GameSim();
+  sim.state.tick = 95;
+  sim.setPresence({ outside: true, inShelter: false });
+  sim.completeScan('site_a');
+  sim.setPresence({ outside: false, inShelter: false });
+  assert.equal(sim.sendReport('site_a').nextRelayTick, 98);
+
+  // 96 and 97 are outage hours without a pass.
+  settle(sim, 2);
+  assert.equal(sim.state.tick, 97);
+  assert.equal(sim.isCommsOutage(), true);
+
+  // Tick 98 is a relay pass, but the link is down.
+  settle(sim, 1);
+  assert.equal(sim.state.tick, 98);
+  assert.equal(sim.isRelayPass(98), true);
+  assert.equal(sim.getRelayStatus().outage, true);
+  assert.equal(sim.state.reports.length, 0);
+  assert.equal(sim.state.reportQueue.length, 1);
+
+  // The outage runs through tick 101; tick 102 is the next open pass.
+  settle(sim, 4);
+  assert.equal(sim.state.tick, 102);
+  assert.equal(sim.isCommsOutage(), false);
+  assert.equal(sim.state.reports.length, 1);
+  assert.equal(sim.state.reportQueue.length, 0);
+});
+
 test('a sample cannot be reported twice or without a scan', () => {
   const sim = new GameSim();
-  assert.equal(sim.sendReport('site_a').ok, false);
+  assert.equal(sim.sendReport('site_a').reason, 'no_sample');
   sim.setPresence({ outside: true, inShelter: false });
   sim.completeScan('site_a');
   assert.equal(sim.sendReport('site_a').ok, true);
-  assert.equal(sim.sendReport('site_a').ok, false);
+  assert.equal(sim.sendReport('site_a').reason, 'already_queued');
+  settle(sim, ECONOMY.comms.relayIntervalTicks);
+  assert.equal(sim.sendReport('site_a').reason, 'already_sent');
 });
 
 test('doing nothing eventually kills the crew', () => {
   const sim = new GameSim();
   settle(sim, ECONOMY.time.missionTicks + 2);
   assert.equal(sim.state.over, 'defeat');
-  assert.ok(['oxygen', 'radiation', 'starvation', 'dehydration', 'mission_clock', 'life_support'].includes(sim.state.cause));
+  assert.ok(
+    ['oxygen', 'dose_limit', 'starvation', 'dehydration', 'mission_clock', 'life_support'].includes(sim.state.cause)
+  );
 });
 
 test('mission clock ends a run with partial reports', () => {
@@ -270,6 +402,221 @@ test('preset capture round-trips the important state', () => {
   assert.equal(restored.state.resources.energy, 44);
   assert.equal(restored.state.machines.battery.upgrades.includes('battery_cells'), true);
   assert.ok(restored.energyCapacity > 100);
+});
+
+test('planting a tray deducts its water and energy cost', () => {
+  const sim = new GameSim();
+  const water = sim.state.resources.water;
+  const energy = sim.state.resources.energy;
+  const result = sim.plantTray(0);
+  assert.equal(result.ok, true);
+  assert.equal(sim.state.resources.water, water - ECONOMY.hydroponics.plantCost.water);
+  assert.equal(sim.state.resources.energy, energy - ECONOMY.hydroponics.plantCost.energy);
+  assert.deepEqual(sim.state.crops[0], { progress: 0 });
+  assert.equal(sim.getCropView(0).empty, false);
+  assert.equal(sim.getCropView(0).stage, 1);
+  assert.equal(sim.log.countPayload(LOG_TYPES.NOTE, (payload) => payload.note === 'crop_planted'), 1);
+});
+
+test('planting is rejected for bad trays, occupied trays and missing resources', () => {
+  const sim = new GameSim();
+  assert.equal(sim.plantTray(-1).reason, 'bad_tray');
+  assert.equal(sim.plantTray(0.5).reason, 'bad_tray');
+  assert.equal(sim.plantTray(ECONOMY.hydroponics.trays).reason, 'bad_tray');
+
+  sim.plantTray(0);
+  assert.equal(sim.plantTray(0).reason, 'occupied');
+
+  sim.state.resources.water = 0;
+  assert.equal(sim.plantTray(1).reason, 'no_water');
+  sim.state.resources.water = 50;
+  sim.state.resources.energy = 0;
+  assert.equal(sim.plantTray(1).reason, 'no_energy');
+  assert.equal(sim.state.crops[1], null);
+
+  sim.state.machines.hydroponics.enabled = false;
+  sim.state.resources.energy = 50;
+  assert.equal(sim.plantTray(1).reason, 'off');
+  sim.state.machines.hydroponics.enabled = true;
+  sim.state.machines.hydroponics.condition = 0;
+  assert.equal(sim.plantTray(1).reason, 'broken');
+});
+
+test('crops advance one tray step per hour and stop at maturity', () => {
+  const sim = new GameSim();
+  assert.equal(sim.plantTray(0).ok, true);
+  settle(sim, 5);
+  assert.equal(sim.getCropView(0).progress, 5);
+  assert.equal(sim.getCropView(0).stage, 1);
+
+  settle(sim, 30);
+  const view = sim.getCropView(0);
+  assert.equal(view.progress, ECONOMY.hydroponics.cycleTicks);
+  assert.equal(view.mature, true);
+  assert.equal(view.stage, ECONOMY.hydroponics.stages);
+  assert.equal(view.remainingTicks, 0);
+  assert.equal(view.yieldFood, Math.round(ECONOMY.hydroponics.yieldFood * sim.stats.food_output));
+});
+
+test('crop stage tracks the four growth quarters', () => {
+  const sim = new GameSim();
+  sim.plantTray(0);
+  const stages = [];
+  for (const progress of [0, 8, 15, 23, ECONOMY.hydroponics.cycleTicks]) {
+    sim.state.crops[0].progress = progress;
+    stages.push(sim.getCropView(0).stage);
+  }
+  assert.deepEqual(stages, [1, 2, 3, 4, 4]);
+});
+
+test('crops pause while hydroponics is off or broken and resume afterwards', () => {
+  const sim = new GameSim();
+  sim.plantTray(0);
+  settle(sim, 3);
+  assert.equal(sim.getCropView(0).progress, 3);
+
+  sim.toggleSystem('hydroponics');
+  settle(sim, 4);
+  assert.equal(sim.getCropView(0).progress, 3);
+
+  sim.toggleSystem('hydroponics');
+  sim.state.machines.hydroponics.condition = 0;
+  settle(sim, 3);
+  assert.equal(sim.getCropView(0).progress, 3);
+  assert.equal(sim.getCropView(0).empty, false);
+
+  sim.state.machines.hydroponics.condition = 80;
+  settle(sim, 2);
+  assert.equal(sim.getCropView(0).progress, 5);
+});
+
+test('harvesting a mature tray adds food, empties the tray and counts the harvest', () => {
+  const sim = new GameSim();
+  sim.plantTray(0);
+  assert.equal(sim.harvestTray(0).reason, 'not_ready');
+  sim.state.crops[0].progress = ECONOMY.hydroponics.cycleTicks;
+  sim.state.resources.food = 40;
+  const expected = Math.round(ECONOMY.hydroponics.yieldFood * sim.stats.food_output);
+  const result = sim.harvestTray(0);
+  assert.equal(result.ok, true);
+  assert.equal(result.food, expected);
+  assert.equal(sim.state.resources.food, 40 + expected);
+  assert.equal(sim.state.crops[0], null);
+  assert.equal(sim.state.stats.harvests, 1);
+  assert.equal(sim.getCropView(0).empty, true);
+  assert.equal(sim.harvestTray(0).reason, 'empty');
+  assert.equal(sim.harvestTray(ECONOMY.hydroponics.trays).reason, 'bad_tray');
+});
+
+test('a mature crop waits without losing yield', () => {
+  const sim = new GameSim();
+  sim.plantTray(0);
+  sim.state.crops[0].progress = ECONOMY.hydroponics.cycleTicks;
+  settle(sim, 10);
+  const view = sim.getCropView(0);
+  assert.equal(view.progress, ECONOMY.hydroponics.cycleTicks);
+  assert.equal(view.mature, true);
+  assert.equal(view.yieldFood, Math.round(ECONOMY.hydroponics.yieldFood * sim.stats.food_output));
+});
+
+test('snapshot round-trips crops and the report queue', () => {
+  const sim = new GameSim();
+  sim.plantTray(0);
+  sim.state.crops[1] = { progress: 12 };
+  sim.setPresence({ outside: true, inShelter: false });
+  sim.completeScan('site_a');
+  sim.setPresence({ outside: false, inShelter: false });
+  sim.sendReport('site_a');
+
+  const restored = new GameSim();
+  assert.equal(restored.restore(sim.snapshot()), true);
+  assert.deepEqual(restored.state.crops, sim.state.crops);
+  assert.deepEqual(restored.state.reportQueue, sim.state.reportQueue);
+  assert.equal(restored.state.stats.harvests, 0);
+});
+
+test('preset capture includes crops and the report queue', () => {
+  const sim = new GameSim();
+  sim.plantTray(0);
+  sim.state.crops[1] = { progress: 12 };
+  sim.setPresence({ outside: true, inShelter: false });
+  sim.completeScan('site_a');
+  sim.setPresence({ outside: false, inShelter: false });
+  sim.sendReport('site_a');
+
+  const preset = sim.capturePreset('capture-crops');
+  assert.deepEqual(preset.crops, sim.state.crops);
+  assert.deepEqual(preset.reportQueue, sim.state.reportQueue);
+
+  const restored = new GameSim();
+  restored.loadPreset(preset);
+  assert.deepEqual(restored.state.crops, sim.state.crops);
+  assert.deepEqual(restored.state.reportQueue, sim.state.reportQueue);
+});
+
+test('reaching the mission dose limit ends the run with dose_limit', () => {
+  const sim = new GameSim();
+  sim.state.radiation = ECONOMY.radiation.deathDose;
+  sim.tick();
+  assert.equal(sim.state.over, 'defeat');
+  assert.equal(sim.state.cause, 'dose_limit');
+});
+
+test('a health collapse above the damage threshold reports dose_limit', () => {
+  const sim = new GameSim();
+  sim.state.radiation = ECONOMY.radiation.damageAbove + 10;
+  sim.state.health = 0.01;
+  sim.tick();
+  assert.equal(sim.state.cause, 'dose_limit');
+  assert.equal(sim.log.countPayload(LOG_TYPES.DAMAGE, (payload) => payload.cause === 'radiation'), 1);
+});
+
+test('the final demo wins when its last report leaves on the next pass', () => {
+  const preset = DEMO_PRESETS.find((row) => row.id === 'demo_final');
+  const sim = new GameSim();
+  sim.loadPreset(preset);
+  assert.ok(sim.nextRelayTick() - preset.tick <= ECONOMY.comms.relayIntervalTicks);
+  assert.equal(sim.sendReport('site_c').ok, true);
+  assert.equal(sim.state.over, null);
+  while (!sim.state.over && sim.state.tick < ECONOMY.time.missionTicks) {
+    sim.tick();
+    sim.drainNotifications();
+  }
+  assert.equal(sim.state.over, 'victory');
+  assert.equal(sim.state.tick, 286);
+  assert.equal(sim.state.reports.length, 3);
+});
+
+test('tray management keeps food above zero for the whole mission', () => {
+  const sim = new GameSim();
+  let minFood = sim.state.resources.food;
+  for (let i = 0; i < ECONOMY.time.missionTicks; i += 1) {
+    const s = sim.state;
+    // Isolate the food economy: life support and power stay healthy so the
+    // test measures tray throughput across a full 300-hour mission.
+    s.resources.energy = 100;
+    s.resources.water = 100;
+    s.resources.o2 = 100;
+    s.health = Math.max(s.health, 80);
+    for (const row of sim.getCropRows()) {
+      if (row.mature) sim.harvestTray(row.index);
+    }
+    for (const row of sim.getCropRows()) {
+      if (row.empty) sim.plantTray(row.index);
+    }
+    for (const row of sim.getMachineRows()) {
+      if (row.machine.job) continue;
+      if (row.condition < 35 && s.resources.energy > 12) sim.startRepair(row.id);
+    }
+    sim.tick();
+    sim.drainNotifications();
+    minFood = Math.min(minFood, sim.state.resources.food);
+    assert.ok(sim.state.resources.food > 0, `food hit zero at tick ${sim.state.tick}`);
+    if (sim.state.over) break;
+  }
+  assert.ok(minFood > 0);
+  assert.equal(sim.state.cause, 'mission_clock', `run ended early: ${sim.state.cause}`);
+  assert.ok(sim.state.stats.harvests > 0);
 });
 
 test('infinite mineral veins can be mined repeatedly and refined for ISRU resources', () => {

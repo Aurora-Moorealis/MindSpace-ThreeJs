@@ -18,8 +18,10 @@ import './ui/styles.css';
 import * as THREE from 'three';
 import { Stage } from './world/scene.js';
 import { World } from './world/world.js';
+import { loadWorldModels } from './world/models.js';
 import { ROOMS } from './world/base.js';
 import { GameSim } from './core/sim.js';
+import { applyRecord, buildRecord, clearSave, readSave, writeSave } from './core/save-game.js';
 import { AudioManager } from './core/audio.js';
 import { HUD } from './ui/hud.js';
 import { NotificationCenter } from './ui/notifications.js';
@@ -27,6 +29,7 @@ import { MachinePanel } from './ui/machine-panel.js';
 import { CommsPanel } from './ui/comms-panel.js';
 import { PauseMenu, ControlsModal, MissionBoardPanel } from './ui/menus.js';
 import { SourcesModal } from './ui/sources-view.js';
+import { GlossaryModal } from './ui/glossary.js';
 import { TitleScreen, IntroScreen, EvaluationScreen } from './ui/screens.js';
 import { DialogueBox } from './ui/dialogue.js';
 import { DebugOverlay } from './ui/debug.js';
@@ -61,6 +64,11 @@ const app = {
   demo: false,
   presetId: null,
   freeplay: false,
+  sprinting: false,
+  saveInfo: null,
+  saveError: null,
+  saveOutcome: null,
+  saveWriteFailed: false,
   muted: false,
   intro: { step: 0, elapsed: 0 },
   endingTimer: 0,
@@ -71,6 +79,26 @@ const app = {
   debugVisible: false,
   selectedSlot: 0,
 };
+
+const SPRINT_MULTIPLIER = 1.6;
+const MOVEMENT_CODES = new Set([
+  'KeyW',
+  'KeyA',
+  'KeyS',
+  'KeyD',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+]);
+const SPRINT_CODES = new Set(['ShiftLeft', 'ShiftRight']);
+
+function hasMovementInput() {
+  for (const code of app.keys) {
+    if (MOVEMENT_CODES.has(code)) return true;
+  }
+  return false;
+}
 
 let stage;
 let sim;
@@ -84,6 +112,7 @@ let missionBoard;
 let pauseMenu;
 let controlsModal;
 let sourcesModal;
+let glossary;
 let titleScreen;
 let introScreen;
 let evaluationScreen;
@@ -156,7 +185,15 @@ async function boot() {
     stormOverlay.className = 'storm-vignette';
     appEl.append(stormOverlay);
 
-    world = new World(stage.scene, sim);
+    const loadingDetail = loading.querySelector('.loading-detail');
+    const models = await Promise.race([
+      loadWorldModels((done, total) => {
+        if (loadingDetail) loadingDetail.textContent = `LOADING 3D ASSETS · ${done} / ${total}`;
+      }),
+      wait(6000).then(() => null),
+    ]);
+
+    world = new World(stage.scene, sim, { models });
     for (const light of world.base.lights ?? []) stage.registerInteriorLight(light);
     world.astronaut.setPosition(app.player.x, app.player.z);
 
@@ -174,17 +211,20 @@ async function boot() {
     loading.classList.add('fade-out');
     setTimeout(() => loading.remove(), 550);
 
-    // Test / debug hook. Deliberately read-only entry points for automated smoke tests.
+    // Test / debug hook. Deliberately limited entry points for automated smoke tests.
     window.__outpost = {
       app,
       sim,
       world,
       stage,
       startNewGame,
+      continueMission,
       goToTitle,
       beginGameplay,
       openComms,
       openMachinePanel,
+      openGlossary,
+      glossary,
       sourcesModal,
       audio,
     };
@@ -208,6 +248,7 @@ function setupUI(screenLayer, drawerLayer) {
     onMenu: () => openPauseMenu(false),
     onSound: toggleMute,
     onSource: openSources,
+    onGlossary: openGlossary,
     onSlot: selectInventorySlot,
   });
 
@@ -219,6 +260,7 @@ function setupUI(screenLayer, drawerLayer) {
 
   sourcesModal = new SourcesModal(overlayLayer);
   controlsModal = new ControlsModal(overlayLayer);
+  glossary = new GlossaryModal(overlayLayer);
 
   machinePanel = new MachinePanel(drawerLayer, {
     onClose: () => {
@@ -282,12 +324,29 @@ function setupUI(screenLayer, drawerLayer) {
       refreshHud();
       audio.play('click');
     },
+    onPlant: (index) => {
+      const result = sim.plantTray(index);
+      if (!result.ok) actionError(result);
+      flushNotifications();
+      machinePanel.refresh(sim);
+      refreshHud();
+      audio.play('click');
+    },
+    onHarvest: (index) => {
+      const result = sim.harvestTray(index);
+      if (!result.ok) actionError(result);
+      flushNotifications();
+      machinePanel.refresh(sim);
+      refreshHud();
+      audio.play('repair');
+    },
     onOpenComms: () => {
       machinePanel.close();
       openComms();
     },
     onSource: openSources,
     onSources: () => openSources(),
+    onGlossary: openGlossary,
   });
 
   commsPanel = new CommsPanel(overlayLayer, {
@@ -301,8 +360,8 @@ function setupUI(screenLayer, drawerLayer) {
       flushNotifications();
       commsPanel.refresh(sim, true);
       refreshHud();
+      updateObjective(true);
       audio.play('report');
-      if (sim.state.over) triggerEnding();
     },
     onClaim: (submissionId) => {
       const result = sim.claimSubmission(submissionId);
@@ -321,6 +380,7 @@ function setupUI(screenLayer, drawerLayer) {
       audio.play('click');
     },
     onSource: openSources,
+    onGlossary: openGlossary,
   });
 
   missionBoard = new MissionBoardPanel(drawerLayer, {
@@ -344,12 +404,17 @@ function setupUI(screenLayer, drawerLayer) {
     },
     onSources: () => openSources(),
     onSound: toggleMute,
+    onGlossary: () => openGlossary(),
   });
 
   titleScreen = new TitleScreen(screenLayer, {
-    onStart: (seed) => {
+    onContinue: () => {
       audio.unlock();
-      startNewGame({ mapSeed: seed });
+      continueMission();
+    },
+    onNewMission: () => {
+      audio.unlock();
+      startNewGame();
     },
     onSeedChange: (seed) => {
       const mapData = world.regenerateExterior(seed);
@@ -396,17 +461,6 @@ function setupUI(screenLayer, drawerLayer) {
 }
 
 function setupInput() {
-  const movementCodes = new Set([
-    'KeyW',
-    'KeyA',
-    'KeyS',
-    'KeyD',
-    'ArrowUp',
-    'ArrowDown',
-    'ArrowLeft',
-    'ArrowRight',
-  ]);
-
   const unlock = () => {
     audio.unlock();
     window.removeEventListener('pointerdown', unlock);
@@ -452,9 +506,14 @@ function setupInput() {
     }
     if (event.code === 'Enter' || event.code === 'Space') {
       if (event.repeat) return;
+      if (glossary?.isOpen()) {
+        event.preventDefault();
+        return;
+      }
       if (app.phase === 'title' && !hasBlockingModal()) {
         event.preventDefault();
-        startNewGame();
+        if (app.saveInfo) continueMission();
+        else startNewGame();
         return;
       }
       if (app.phase === 'intro') {
@@ -476,6 +535,10 @@ function setupInput() {
       }
       return;
     }
+    if (SPRINT_CODES.has(event.code)) {
+      if (app.phase === 'game' && !app.paused && !app.panel) app.keys.add(event.code);
+      return;
+    }
     if (event.code === 'KeyF') {
       if (event.repeat) return;
       if (app.phase === 'game' && !app.paused && !app.panel && !hasBlockingModal()) {
@@ -492,7 +555,7 @@ function setupInput() {
       }
       return;
     }
-    if (movementCodes.has(event.code)) {
+    if (MOVEMENT_CODES.has(event.code)) {
       if (app.phase === 'game' && !app.paused && !app.panel) {
         event.preventDefault();
         app.keys.add(event.code);
@@ -519,6 +582,10 @@ function setupInput() {
     { passive: true }
   );
 
+  window.addEventListener('pagehide', () => {
+    if (app.phase === 'game') autosave();
+  });
+
   window.addEventListener('blur', () => {
     app.keys.clear();
     if (app.phase === 'game' && !app.paused && !app.panel && !evaluationScreen?.isOpen() && !sourcesModal?.isOpen() && !controlsModal?.isOpen()) {
@@ -527,6 +594,7 @@ function setupInput() {
   });
 
   document.addEventListener('visibilitychange', () => {
+    if (document.hidden && app.phase === 'game') autosave();
     if (document.hidden && app.phase === 'game' && !app.paused && !app.panel) {
       openPauseMenu(true);
     }
@@ -535,7 +603,8 @@ function setupInput() {
 
 function hasBlockingModal() {
   return Boolean(
-    pauseMenu?.isOpen() ||
+    glossary?.isOpen() ||
+      pauseMenu?.isOpen() ||
       sourcesModal?.isOpen() ||
       controlsModal?.isOpen?.() ||
       evaluationScreen?.isOpen() ||
@@ -572,6 +641,10 @@ function toggleMute() {
 }
 
 function handleEscape() {
+  if (glossary?.isOpen()) {
+    glossary.close();
+    return;
+  }
   if (sourcesModal?.isOpen()) {
     sourcesModal.close();
     return;
@@ -593,6 +666,7 @@ function handleEscape() {
 
 function openPauseMenu(auto) {
   if (app.phase !== 'game') return;
+  autosave();
   closePanels();
   if (app.scan && app.scan.pausedAt == null) app.scan.pausedAt = performance.now();
   app.paused = true;
@@ -624,7 +698,13 @@ function closePanels() {
   machinePanel?.close();
   commsPanel?.close();
   missionBoard?.close();
+  glossary?.close();
   if (app.panel && app.panel !== 'pause') app.panel = null;
+}
+
+function openGlossary(termId = null) {
+  glossary.open(termId ?? null);
+  audio.play('click');
 }
 
 function openSources(sourceId = null) {
@@ -936,6 +1016,11 @@ function actionError(result) {
     outage: 'The Deep Space Network is down. Try again after the outage.',
     no_sample: 'No sample aboard for that site.',
     already_sent: 'That report has already been sent.',
+    already_queued: 'That report is already waiting for the next relay pass.',
+    occupied: 'That tray already has a crop growing.',
+    empty: 'That tray is empty. Plant a crop first.',
+    off: 'This machine is switched off.',
+    no_water: 'Not enough water for that action.',
     not_ready: 'That contract is not ready to claim yet.',
     claimed: 'That contract has already been claimed.',
     clean: 'The panels are already clean.',
@@ -959,9 +1044,167 @@ function flushNotifications() {
   }
 }
 
+/**
+ * Persists an in-progress run. Demo runs, freeplay and finished runs never
+ * write: the victory snapshot is frozen and a defeat is expected to clear it.
+ */
+function autosave() {
+  if (!sim || app.phase !== 'game' || app.demo || app.freeplay || sim.state.over) return false;
+  const record = buildRecord({ sim, app, status: 'in_progress' });
+  if (!record) return false;
+  const ok = writeSave(record);
+  if (ok) {
+    app.saveInfo = record;
+    app.saveError = null;
+    app.saveWriteFailed = false;
+  } else if (!app.saveWriteFailed) {
+    app.saveWriteFailed = true;
+    notifications?.toast({
+      kind: 'warn',
+      title: STRINGS['ui.saveWriteFailedTitle'],
+      body: STRINGS['ui.saveWriteFailedBody'],
+      icon: 'alert',
+      duration: 4200,
+    });
+  }
+  return ok;
+}
+
+function isPlayerPositionUsable(position) {
+  if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.z)) return false;
+  if (!world?.bounds) return false;
+  const { minX, maxX, minZ, maxZ } = world.bounds;
+  if (position.x < minX || position.x > maxX || position.z < minZ || position.z > maxZ) return false;
+  return !world.isBlocked(position.x, position.z, 0.55);
+}
+
+/** Resolves the save side of an ending and returns the evaluation outcome key. */
+function resolveEndingSave() {
+  if (app.demo) return null;
+  if (sim.state.over === 'victory') {
+    const record = buildRecord({ sim, app, status: 'victory' });
+    const ok = record ? writeSave(record) : false;
+    if (ok) {
+      app.saveInfo = record;
+      app.saveError = null;
+      return 'kept';
+    }
+    app.saveInfo = null;
+    app.saveError = 'unavailable';
+    return 'unavailable';
+  }
+  if (sim.state.over === 'defeat') {
+    if (app.freeplay) return 'completed_kept';
+    const ok = clearSave();
+    if (ok) {
+      app.saveInfo = null;
+      app.saveError = null;
+      return 'deleted';
+    }
+    app.saveError = 'unavailable';
+    return 'unavailable';
+  }
+  return null;
+}
+
+/** Restores a saved mission straight into gameplay, skipping intro and tutorial. */
+function continueMission() {
+  if (app.transitioning) return;
+  const { record, error } = readSave();
+  if (!record) {
+    app.saveInfo = null;
+    app.saveError = error;
+    titleScreen.show({ save: null, error });
+    return;
+  }
+
+  app.transitioning = true;
+  app.session += 1;
+  app.keys.clear();
+  fadeEl.classList.add('visible');
+  audio.play('click');
+
+  setTimeout(() => {
+    try {
+      if (!applyRecord(record, { sim, app })) {
+        clearSave();
+        app.saveInfo = null;
+        app.saveError = 'corrupt';
+        goToTitle();
+        app.saveInfo = null;
+        app.saveError = 'corrupt';
+        titleScreen.show({ save: null, error: 'corrupt' });
+        notifications.toast({
+          kind: 'warn',
+          title: STRINGS['ui.saveUnreadable'],
+          body: STRINGS['ui.saveUnreadable'],
+          icon: 'alert',
+          duration: 5000,
+        });
+        return;
+      }
+
+      // The exterior is generated at boot from a random seed; a resumed
+      // mission must rebuild the same terrain the save was taken on.
+      const savedSeed = sim.state.mapSeed;
+      if (savedSeed != null && String(savedSeed) !== String(world.mapData?.seed)) {
+        world.regenerateExterior(savedSeed);
+        titleScreen?.setMapInfo(world.mapData);
+      }
+
+      if (!isPlayerPositionUsable(app.player)) {
+        const spawn = world.getSpawn();
+        app.player = { x: spawn.x, z: spawn.z };
+        app.facing = 0;
+      }
+
+      app.phase = 'game';
+      app.paused = false;
+      app.autoPaused = false;
+      app.panel = null;
+      app.scan = null;
+      app.nearest = null;
+      app.interaction = null;
+      app.demo = false;
+      app.presetId = null;
+      app.saveInfo = record;
+      app.saveError = null;
+      app.saveOutcome = null;
+      app.saveWriteFailed = false;
+      app.freeplay = record.status === 'victory';
+      firstScanStoryShown = sim.state.scans.length > 0;
+
+      if (app.freeplay && sim.state.over === 'victory') sim.continueFreeplay();
+
+      world.astronaut.setPosition(app.player.x, app.player.z);
+      world.astronaut.setFacing(app.facing);
+      world.astronaut.group.rotation.y = app.facing;
+      titleScreen.hide();
+      closePanels();
+      evaluationScreen.close();
+      introScreen.destroy();
+      dialogue.close();
+      notifications.clear();
+      beginGameplay({ silent: true });
+
+      if (app.freeplay) {
+        notifications.story(
+          'FREEPLAY',
+          'The primary mission is complete. The outpost keeps running; no further objectives will trigger.',
+          'target'
+        );
+      }
+    } finally {
+      app.transitioning = false;
+      fadeEl.classList.remove('visible');
+    }
+  }, 380);
+}
+
 function triggerEnding() {
   if (app.phase === 'ending' || app.phase === 'evaluation') return;
   if (!sim.state.over) return;
+  app.saveOutcome = resolveEndingSave();
   closePanels();
   machinePanel?.close();
   commsPanel?.close();
@@ -970,12 +1213,19 @@ function triggerEnding() {
   app.panel = null;
   app.paused = false;
   app.scan = null;
+  app.sprinting = false;
   app.phase = 'ending';
   app.endingTimer = 0;
   app.endingStartedAt = performance.now();
   app.objective = null;
   app.objectiveId = null;
-  world.setObjective(null);
+  world.setMissionMarkers({
+    currentId: null,
+    scans: sim.state.scans,
+    samples: sim.state.samples,
+    reports: sim.state.reports,
+    reportQueue: sim.state.reportQueue.map((item) => item.poiId),
+  });
   refreshHud();
   notifications.clearBanner();
   audio.play(sim.state.over === 'victory' ? 'report' : 'alarm');
@@ -988,7 +1238,7 @@ function showEvaluation() {
   stormOverlay.style.opacity = '0';
   stage.setMode('overview');
   stage.titleTime = 0;
-  evaluationScreen.open(sim);
+  evaluationScreen.open(sim, { saveOutcome: app.saveOutcome });
   audio.play(sim.state.over === 'victory' ? 'report' : 'event');
 }
 
@@ -1009,6 +1259,7 @@ function enterFreeplay() {
 }
 
 function goToTitle(initial = false) {
+  if (app.phase === 'game' && !app.demo && !app.freeplay && !sim.state.over) autosave();
   app.session += 1;
   app.phase = 'title';
   app.paused = false;
@@ -1017,6 +1268,7 @@ function goToTitle(initial = false) {
   app.demo = false;
   app.presetId = null;
   app.freeplay = false;
+  app.sprinting = false;
   app.speed = 1;
   app.tickAccum = 0;
   app.scan = null;
@@ -1025,6 +1277,8 @@ function goToTitle(initial = false) {
   app.objective = null;
   app.objectiveId = null;
   app.wasOutside = false;
+  app.saveOutcome = null;
+  app.saveWriteFailed = false;
   app.keys.clear();
   firstScanStoryShown = false;
 
@@ -1034,6 +1288,7 @@ function goToTitle(initial = false) {
   pauseMenu?.close();
   sourcesModal?.close();
   controlsModal?.close();
+  glossary?.close();
   evaluationScreen?.close();
   introScreen?.destroy();
   dialogue?.close();
@@ -1047,9 +1302,12 @@ function goToTitle(initial = false) {
   world.astronaut.setPosition(app.player.x, app.player.z);
   world.astronaut.setFacing(0);
   world.astronaut.group.rotation.y = 0;
-  world.setObjective(null);
+  world.setMissionMarkers({ currentId: null, scans: [], samples: [], reports: [] });
   hud.show(false);
-  titleScreen.show();
+  const { record, error } = readSave();
+  app.saveInfo = record;
+  app.saveError = error;
+  titleScreen.show({ save: record, error });
   stage.setMode('title');
   stage.titleTime = 0;
   stage.setEnvironment({ time: 2, storm: 0, outside: false, lightsOn: true });
@@ -1074,11 +1332,20 @@ function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false
   pauseMenu?.close();
   sourcesModal?.close();
   controlsModal?.close();
+  glossary?.close();
   evaluationScreen?.close();
   introScreen?.destroy();
   dialogue?.close();
   notifications?.clear();
   if (debugOverlay?.visible) debugOverlay.toggle();
+
+  if (!presetId) {
+    clearSave();
+    app.saveInfo = null;
+    app.saveError = null;
+    app.saveOutcome = null;
+    app.saveWriteFailed = false;
+  }
 
   sim.reset();
   if (mapSeed != null && String(mapSeed) !== String(world.mapData?.seed)) {
@@ -1097,6 +1364,7 @@ function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false
   app.demo = false;
   app.presetId = null;
   app.freeplay = false;
+  app.sprinting = false;
   app.wasOutside = false;
   app.objectiveId = null;
   app.panel = null;
@@ -1107,7 +1375,7 @@ function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false
   world.astronaut.setPosition(app.player.x, app.player.z);
   world.astronaut.setFacing(0);
   world.astronaut.group.rotation.y = 0;
-  world.setObjective(null);
+  world.setMissionMarkers({ currentId: null, scans: [], samples: [], reports: [] });
   hud.show(false);
   titleScreen.hide();
 
@@ -1203,6 +1471,7 @@ function finishIntro() {
     lines,
     onComplete: () => beginGameplay({ silent: false }),
     onSkip: () => beginGameplay({ silent: true }),
+    onGlossary: () => openGlossary(),
   });
   audio.play('event');
 }
@@ -1212,7 +1481,8 @@ function beginGameplay({ silent = false } = {}) {
   app.paused = false;
   app.panel = null;
   app.autoPaused = false;
-  app.tickAccum = 0;
+  app.sprinting = false;
+  app.saveOutcome = null;
   introScreen.destroy();
   dialogue.close();
   titleScreen.hide();
@@ -1227,6 +1497,7 @@ function beginGameplay({ silent = false } = {}) {
   if (!silent) {
     audio.play('event');
   }
+  autosave();
 }
 
 function updatePresence(silent = false) {
@@ -1287,10 +1558,14 @@ function computeObjective() {
 function updateObjective(force = false) {
   const objective = computeObjective();
   app.objective = objective;
-  if (objective?.id !== app.objectiveId || force) {
-    app.objectiveId = objective?.id ?? null;
-    world.setObjective(objective?.id ?? null);
-  }
+  app.objectiveId = objective?.id ?? null;
+  world.setMissionMarkers({
+    currentId: app.objectiveId,
+    scans: sim.state.scans,
+    samples: sim.state.samples,
+    reports: sim.state.reports,
+    reportQueue: sim.state.reportQueue.map((item) => item.poiId),
+  });
 }
 
 function refreshHud(cachedNearest = undefined) {
@@ -1340,7 +1615,7 @@ function updateScanAndInteractions(dt) {
         ? Math.hypot(app.player.x - targetPos.x, app.player.z - targetPos.z)
         : 999;
       const limit = app.scan.type === 'scan' || app.scan.type === 'mine' ? 4.3 : 5.4;
-      const moving = app.keys.size > 0;
+      const moving = hasMovementInput();
       if (moving) {
         cancelScan('moved');
       } else if (distance > limit) {
@@ -1363,6 +1638,8 @@ function updateGameplay(dt, rawDt) {
   updatePresence();
   const blocking = app.paused || app.panel;
   let moving = false;
+  let sprinting = false;
+  app.sprinting = false;
 
   if (!blocking) {
     const keys = app.keys;
@@ -1376,7 +1653,8 @@ function updateGameplay(dt, rawDt) {
       const len = Math.hypot(dx, dz);
       dx /= len;
       dz /= len;
-      const speed = 5.0 * sim.stats.movement_speed;
+      const wantsSprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
+      const speed = 5.0 * sim.stats.movement_speed * (wantsSprint ? SPRINT_MULTIPLIER : 1);
       const total = speed * dt;
       const steps = Math.max(1, Math.ceil(dt / 0.05));
       for (let i = 0; i < steps; i += 1) {
@@ -1385,6 +1663,8 @@ function updateGameplay(dt, rawDt) {
       app.facing = Math.atan2(dx, dz);
       world.astronaut.setFacing(app.facing);
       moving = true;
+      sprinting = wantsSprint;
+      app.sprinting = wantsSprint;
       if (app.scan) cancelScan('moved');
     }
   }
@@ -1406,6 +1686,7 @@ function updateGameplay(dt, rawDt) {
         triggerEnding();
         break;
       }
+      autosave();
     }
   }
 
@@ -1437,6 +1718,7 @@ function updateGameplay(dt, rawDt) {
     mineTarget: app.scan?.type === 'mine' ? app.scan.targetId : null,
     pickaxeEquipped: sim.state.hotbar?.[app.selectedSlot]?.id === 'pickaxe',
     moving,
+    sprinting,
     outside: app.outside,
     time: app.time,
     storm: stormVisual,

@@ -47,9 +47,10 @@ function makeMoonTexture(seed = 7) {
 }
 
 export class ExteriorBuilder {
-  constructor(mapData = null) {
+  constructor(mapData = null, models = null) {
     this.mapData = mapData ?? generateProceduralMap();
     this.group = new THREE.Group();
+    this.models = models;
     this.colliders = [];
     this.dust = null;
     this.craterDust = null;
@@ -254,6 +255,29 @@ export class ExteriorBuilder {
   }
 
   rover() {
+    // Authored GLB (see scripts/models/build_models.py). The procedural version
+    // below stays as a fallback for a failed asset load.
+    if (this.models?.rover) {
+      const group = this.models.rover.clone(true);
+      group.position.set(7.2, -0.08, 20.0);
+      group.rotation.y = -0.5;
+      this.group.add(group);
+      this.addCollider(7.2, 20.0, 3.6, 3.4);
+      const dish = group.getObjectByName('RoverDish');
+      if (dish) {
+        this.animated.push(() => {
+          dish.rotation.y = Math.sin(performance.now() * 0.0004) * 0.06;
+        });
+      }
+      const beacon = group.getObjectByName('RoverBeacon');
+      if (beacon) {
+        this.animated.push(() => {
+          beacon.visible = Math.sin(performance.now() * 0.003) > 0.5;
+        });
+      }
+      return;
+    }
+
     const group = new THREE.Group();
     const chassis = rounded(2.6, 0.45, 1.35, 0.08, 0xd8d8d4);
     chassis.position.y = 0.62;
@@ -300,6 +324,28 @@ export class ExteriorBuilder {
   }
 
   lander() {
+    // Authored GLB, with the same procedural fallback contract as the rover.
+    if (this.models?.lander) {
+      const group = this.models.lander.clone(true);
+      group.position.set(-38, -0.1, 47);
+      group.rotation.y = 0.7;
+      this.group.add(group);
+      this.addCollider(-38, 47, 6.4, 6.0);
+      const dish = group.getObjectByName('LanderDish');
+      if (dish) {
+        this.animated.push(() => {
+          dish.rotation.y = Math.sin(performance.now() * 0.00032) * 0.08;
+        });
+      }
+      const beacon = group.getObjectByName('LanderBeacon');
+      if (beacon) {
+        this.animated.push(() => {
+          beacon.visible = Math.sin(performance.now() * 0.003 + 1.2) > 0.4;
+        });
+      }
+      return;
+    }
+
     const group = new THREE.Group();
     const body = cylinder(1.5, 1.7, 2.0, 8, 0xbfc2c4);
     body.position.y = 2.1;
@@ -517,6 +563,6 @@ export class ExteriorBuilder {
   }
 }
 
-export function buildExterior(mapData = null) {
-  return new ExteriorBuilder(mapData).build();
+export function buildExterior(mapData = null, models = null) {
+  return new ExteriorBuilder(mapData, models).build();
 }

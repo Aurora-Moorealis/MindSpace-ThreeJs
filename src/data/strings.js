@@ -22,7 +22,8 @@ export const STRINGS = {
   'resource.energy.short': 'PWR',
   'resource.o2.desc': 'Breathable oxygen reserve. The crew drains it every hour; the O2 system refills it.',
   'resource.water.desc': 'Potable water. Drinking, food prep and oxygen generation all draw from the same tank.',
-  'resource.food.desc': 'Dry food stock. Hydroponics is the only producer on the outpost.',
+  'resource.food.desc':
+    'Dry food stock. Hydroponics is the only producer on the outpost, and it pays out one harvest at a time.',
   'resource.energy.desc': 'Usable battery charge. Solar charges it during the day; everything else drains it.',
 
   'room.hub': 'Central Hub',
@@ -46,7 +47,7 @@ export const STRINGS = {
   'machine.hydroponics.name': 'Hydroponics Bay',
   'machine.hydroponics.short': 'GROW',
   'machine.hydroponics.desc':
-    'Grow racks feed the crew and add a little oxygen. They are thirsty and power-hungry, and the first production system to switch off when power runs low.',
+    'Grow trays feed the crew and add a little oxygen. A crop runs from planting to harvest in about 30 game hours, and the bay is the first system to switch off when power runs low.',
   'machine.solar_array.name': 'Solar Array',
   'machine.solar_array.short': 'SOLAR',
   'machine.solar_array.desc':
@@ -76,6 +77,45 @@ export const STRINGS = {
   'station.mission_board.desc':
     'A summary of the science mission, your contracts and the outpost clock. Use it when you need to remember why you are here.',
 
+  'time.missionDay': 'MISSION DAY',
+  'time.compressionNote':
+    'A real lunar day lasts 29.53 Earth days. The outpost clock is compressed so a mission fits in one sitting.',
+
+  'dose.glossary': 'What is dose?',
+  'dose.threshold30': '30 points (75 mSv): maximum health starts to drop',
+  'dose.threshold70': '70 points (175 mSv): the crew takes continuous damage',
+  'dose.limit': '100 points (250 mSv): the mission dose limit',
+  'dose.scaleNote':
+    'The 0-100 bar is a game budget. It maps to 250 mSv, the NASA mission limit, at 2.5 mSv per point. It is an educational model, not a clinical assessment.',
+
+  'comms.rtt': '2.56 s round trip',
+  'comms.lightNote':
+    'The signal takes 1.28 s each way. The outpost cannot be flown in real time.',
+  'comms.nextPass': 'Next relay pass',
+  'comms.passIn': 'in {n} h',
+  'comms.passNow': 'open now',
+  'comms.queueTitle': 'Queued for the next pass',
+  'comms.queueEmpty': 'No reports waiting.',
+  'comms.queued': 'QUEUED',
+  'comms.transmitted': 'TRANSMITTED',
+  'comms.queuedAt': 'queued at T+{tick}H',
+  'comms.waitingPass': 'Waiting for the next relay pass.',
+  'comms.outageQueue': 'DSN outage: the queue holds until the link returns.',
+  'comms.glossary': 'What is a relay pass?',
+
+  'hydro.trays': 'GROW TRAYS',
+  'hydro.empty': 'Empty tray',
+  'hydro.plant': 'Plant',
+  'hydro.harvest': 'Harvest',
+  'hydro.stage': 'Stage {n} of {total}',
+  'hydro.remaining': '{n} h to harvest',
+  'hydro.ready': 'Ready to harvest',
+  'hydro.yield': '+{n} food',
+  'hydro.plantCost': 'Planting costs {water} water and {energy} power.',
+  'hydro.compression':
+    'A real leafy-green crop takes about 28 days. Here it takes 30 game hours so you can see a full cycle.',
+  'hydro.glossary': 'What is hydroponics?',
+
   'upgrade.o2_efficiency.name': 'High-yield electrolysis',
   'upgrade.o2_efficiency.desc': '+25% oxygen output for the same power.',
   'upgrade.o2_efficiency.drawback': 'Consumes 15% more water per hour.',
@@ -89,11 +129,11 @@ export const STRINGS = {
   'upgrade.water_power.desc': '-20% power draw.',
   'upgrade.water_power.drawback': '-10% water recovered per hour.',
   'upgrade.hydro_yield.name': 'Dense-pack grow trays',
-  'upgrade.hydro_yield.desc': '+25% food output.',
+  'upgrade.hydro_yield.desc': '+25% harvest yield.',
   'upgrade.hydro_yield.drawback': 'Hydroponics draws 15% more power.',
   'upgrade.hydro_led.name': 'Efficient grow lights',
   'upgrade.hydro_led.desc': '-20% power draw.',
-  'upgrade.hydro_led.drawback': '-8% food output.',
+  'upgrade.hydro_led.drawback': '-8% harvest yield.',
   'upgrade.solar_tracking.name': 'Sun-tracking mounts',
   'upgrade.solar_tracking.desc': '+20% solar output during daylight.',
   'upgrade.solar_tracking.drawback': 'Moving mounts wear the array 20% faster.',
@@ -136,7 +176,7 @@ export const STRINGS = {
 
   'hint.o2_system': 'O₂ low? Repair this first. The suit reserve only lasts 6 hours.',
   'hint.water_recycler': 'Water falling? Repair the recycler, then check the shower and coolant lines.',
-  'hint.hydroponics': 'Food falling? This bay feeds you. It needs water and 2.6 kW.',
+  'hint.hydroponics': 'Food falling? Plant a tray, then harvest it when it is ready. The bay needs water and power.',
   'hint.solar_array': 'Dusty panels cut power. Clean them outside — the dose stays with you.',
   'hint.battery': 'Store daytime solar here. Without it, the lunar night gets very quiet.',
   'hint.power_distributor': 'When power is short, shed the greenhouse before life support.',
@@ -205,7 +245,7 @@ export const STRINGS = {
 
   'submission.storm_watch.name': 'Storm Watch',
   'submission.storm_watch.desc':
-    'Collect a surface reading before the Sol 3 solar particle event. Scanner data helps Mission Control calibrate the shelter.',
+    'Collect a surface reading before the day-3 solar particle event. Scanner data helps Mission Control calibrate the shelter.',
   'submission.field_survey.name': 'Field Survey',
   'submission.field_survey.desc':
     'Complete two survey scans. The science team pays in pantry stock and water.',
@@ -236,7 +276,7 @@ export const STRINGS = {
   'report.site_c': 'Report 03 — Malapert illumination survey',
   'report.generic': 'Science report',
 
-  'intro.1.title': 'SOL 1 — ARTEMIS RIDGE',
+  'intro.1.title': 'MISSION DAY 1 — ARTEMIS RIDGE',
   'intro.1.body': 'The rest of your crew rotated home. You stayed.',
   'intro.2.title': 'ONE ASTRONAUT',
   'intro.2.body':
@@ -245,7 +285,7 @@ export const STRINGS = {
   'intro.3.body':
     'Scan three survey sites, then send three reports from the comms console. Keep the base alive until then.',
 
-  'tutorial.1': 'Mission Control: your oxygen, water, food and power bars are the mission. The O₂ system in the workshop turns water and power into air.',
+  'tutorial.1': 'Mission Control: your oxygen, water, food and power bars are the mission. Hold Shift to sprint, and the O₂ system in the workshop turns water and power into air.',
   'tutorial.2': 'A radiation window is coming. Dose never goes down. Stay inside, or lock yourself in the dormitory storm shelter.',
   'tutorial.3': 'When a machine turns amber or red, walk to it and press E. Repairs cost power and a couple of game hours.',
   'tutorial.4': 'First sample secured. Take it to the comms console in the west room and send the report.',
@@ -258,7 +298,7 @@ export const STRINGS = {
   'eval.submissions': 'Contracts completed',
   'eval.resources': 'Average resources',
   'eval.radiation': 'Peak dose / shelter uses',
-  'eval.sols': 'Sols elapsed',
+  'eval.sols': 'Mission days',
   'eval.performance': 'Performance review',
   'eval.wentWell': 'What went well',
   'eval.improve': 'What to improve',
@@ -270,6 +310,23 @@ export const STRINGS = {
   'eval.grade': 'Grade',
 
   'ui.newGame': 'Start Mission',
+  'ui.continueMission': 'Continue mission',
+  'ui.continueFreeplay': 'Continue freeplay',
+  'ui.newMission': 'New mission',
+  'ui.overwriteSave': 'Overwrite save?',
+  'ui.saveInProgress': 'In progress',
+  'ui.saveComplete': 'Mission complete',
+  'ui.saveUnreadable': 'Save unreadable',
+  'ui.saveUnavailable': 'Save unavailable',
+  'ui.saveKept': 'Mission complete. Your progress is saved.',
+  'ui.saveDeleted': 'Mission failed. The saved run was deleted.',
+  'ui.saveCompletedKept': 'The completed mission save is kept.',
+  'ui.saveUnavailableNote': 'Progress could not be saved in this browser.',
+  'ui.saveDemo': 'Demo run. Progress is not saved.',
+  'ui.saveWriteFailedTitle': 'Progress not saved',
+  'ui.saveWriteFailedBody': 'The browser could not write the mission save.',
+  'ui.pauseSaveNote': 'Progress saves automatically. Losing the mission deletes the save.',
+  'ui.sprint': 'Sprint',
   'ui.demoMid': 'Demo · mid-mission',
   'ui.demoFinal': 'Demo · final hour',
   'ui.dataSources': 'Data Sources',
@@ -366,6 +423,43 @@ export const STRINGS = {
   'ui.fail': 'FAIL',
   'ui.demoLoaded': 'Demo state loaded',
   'ui.presetInvalid': 'Preset rejected by invariant validator',
+
+  'glossary.title': 'Glossary',
+  'glossary.subtitle': 'The words this mission uses, explained in plain English.',
+  'glossary.open': 'Glossary',
+  'glossary.close': 'Close glossary',
+  'glossary.seeAlso': 'See also',
+
+  'glossary.dose.term': 'Dose',
+  'glossary.dose.definition':
+    'Dose is the amount of radiation energy your body absorbs. On the Moon there is no thick air or magnetic field to block it, so every hour outside adds to the total and it never goes down.',
+  'glossary.msv.term': 'Millisievert (mSv)',
+  'glossary.msv.definition':
+    'Millisievert: the unit scientists use to measure radiation dose in people. One point on the game dose bar equals 2.5 millisieverts, so 100 points is 250 millisieverts.',
+  'glossary.microgravity.term': 'Microgravity',
+  'glossary.microgravity.definition':
+    'Microgravity is not zero gravity: astronauts and everything around them fall together, so they float. Without weight pulling on the body, muscles and bones get weaker and fluid shifts towards the head.',
+  'glossary.lunar_day.term': 'Lunar day',
+  'glossary.lunar_day.definition':
+    'A lunar day, from sunrise to sunrise, lasts 29.53 Earth days: about 14 days of sunlight and 14 days of night. The outpost clock is compressed so one mission fits in one sitting.',
+  'glossary.spe.term': 'Solar particle event (SPE)',
+  'glossary.spe.definition':
+    'Solar particle event: a burst of fast particles from the Sun, usually after a flare. It arrives with little warning, so the storm shelter is the countermeasure: get inside and lock it.',
+  'glossary.gcr.term': 'Galactic cosmic rays (GCR)',
+  'glossary.gcr.definition':
+    'Galactic cosmic rays: heavy, fast particles from outside the solar system that arrive all the time. They are hard to stop, and thick shielding made of regolith helps more than thin metal walls.',
+  'glossary.regolith.term': 'Regolith',
+  'glossary.regolith.definition':
+    'Regolith is the loose dust and broken rock that covers the Moon. There is no wind or rain to move it, and it is sharp and abrasive, so it sticks to suits and scratches equipment.',
+  'glossary.eva.term': 'Extravehicular activity (EVA)',
+  'glossary.eva.definition':
+    'Extravehicular activity: any time an astronaut leaves the sealed habitat in a suit. Every walk outside costs radiation dose and wears the suit down, so plan short trips.',
+  'glossary.dsn.term': 'Deep Space Network (DSN)',
+  'glossary.dsn.definition':
+    'Deep Space Network: the antennas on Earth that talk to spacecraft. A relay pass is the short window when the outpost can see one of them, so messages often have to wait.',
+  'glossary.hydroponics.term': 'Hydroponics',
+  'glossary.hydroponics.definition':
+    'Hydroponics means growing plants without soil, feeding their roots with water that carries the nutrients. Here a leafy crop takes 30 game hours instead of the month a real one needs.',
 };
 
 export function t(key, fallback = key) {

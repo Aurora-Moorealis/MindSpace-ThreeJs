@@ -13,11 +13,12 @@
  *   4. Power routing, load shedding, production.
  *   5. Crew consumption, meals, suit wear.
  *   6. Consequences: radiation cap, starvation, O2 emergency, death.
- *   7. Submission contract evaluation, supply drops, victory/defeat checks.
- *   8. Notification and ledger updates.
+ *   7. Relay pass: transmit queued reports when the DSN link is open.
+ *   8. Submission contract evaluation, supply drops, victory/defeat checks.
+ *   9. Notification and ledger updates.
  */
 
-import { ECONOMY, getHourOfDay, isDaylight } from '../data/economy.js';
+import { ECONOMY, doseMsv, getHourOfDay, isDaylight } from '../data/economy.js';
 import { EVENTS, eventIntensityAt } from '../data/events.js';
 import { MACHINES } from '../data/machines.js';
 import { POIS } from '../data/pois.js';
@@ -107,6 +108,8 @@ export class GameSim {
       scans: [],
       samples: [],
       reports: [],
+      reportQueue: [],
+      crops: Array(eco.hydroponics.trays).fill(null),
       scanLog: [],
       minerals: { water_ice: 0, ilmenite: 0, anorthite: 0, olivine: 0 },
       hotbar: [{ type: 'tool', id: 'pickaxe', count: 1 }, null, null, null, null],
@@ -126,6 +129,7 @@ export class GameSim {
         mined: 0,
         stormsSurvived: 0,
         energyWasted: 0,
+        harvests: 0,
       },
       lastDelta: { o2: 0, water: 0, food: 0, energy: 0 },
       lastPower: { demand: 0, solar: 0, shed: [], capacity: eco.resources.energy.capacity },
@@ -187,8 +191,117 @@ export class GameSim {
   }
 
   /** Raw values for tests and the debug overlay. */
-  snapshot() {
+  stateSnapshot() {
     return JSON.parse(JSON.stringify(this.state));
+  }
+
+  /**
+   * Complete, JSON-safe snapshot of a run for local persistence: the mutable
+   * state, the ledger entries and the current interior/exterior presence.
+   */
+  snapshot() {
+    return {
+      state: JSON.parse(JSON.stringify(this.state)),
+      log: this.log.serialize(),
+      presence: { ...this.presence },
+    };
+  }
+
+  /**
+   * Restores a snapshot produced by [method snapshot].
+   *
+   * A malformed or content-incompatible snapshot is rejected instead of being
+   * partially applied. Ids that no longer exist in the current machine, POI or
+   * submission data invalidate the snapshot so a save never resurrects removed
+   * content.
+   */
+  restore(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') return false;
+    if (!this._isValidSnapshotState(snapshot.state)) return false;
+
+    this.state = JSON.parse(JSON.stringify(snapshot.state));
+    // Additive fields: version-1 saves predate the report queue and the trays.
+    if (!Array.isArray(this.state.reportQueue)) this.state.reportQueue = [];
+    this.state.crops = this._normalizeCrops(this.state.crops);
+    this.state.stats.harvests ??= 0;
+    this.presence = {
+      outside: Boolean(snapshot.presence?.outside),
+      inShelter: Boolean(snapshot.presence?.inShelter),
+    };
+    this.log.reset();
+    if (Array.isArray(snapshot.log)) this.log.seed(snapshot.log);
+    this.notifications.length = 0;
+    // Upgrade multipliers are derived data: rebuild them from the restored
+    // machine upgrades instead of trusting a serialized copy.
+    this.recomputeStats();
+    return true;
+  }
+
+  /** Shape and content checks used by [method restore]. */
+  _isValidSnapshotState(state) {
+    if (!state || typeof state !== 'object') return false;
+    if (!Number.isInteger(state.tick) || state.tick < 0) return false;
+    if (!this.economy.time.speeds.includes(state.speed)) return false;
+    if (!state.resources || typeof state.resources !== 'object') return false;
+    for (const id of RESOURCE_IDS) {
+      const value = state.resources[id];
+      if (!Number.isFinite(value) || value < 0) return false;
+    }
+    for (const key of ['health', 'radiation', 'nutrition', 'hydration', 'suit', 'dust']) {
+      if (!Number.isFinite(state[key])) return false;
+    }
+    if (!state.machines || typeof state.machines !== 'object') return false;
+    const machineIds = Object.keys(this.machinesData);
+    if (Object.keys(state.machines).length !== machineIds.length) return false;
+    for (const id of machineIds) {
+      const machine = state.machines[id];
+      if (!machine || typeof machine !== 'object') return false;
+      if (!Number.isFinite(machine.condition)) return false;
+      if (typeof machine.enabled !== 'boolean') return false;
+      if (!Array.isArray(machine.upgrades)) return false;
+      if (!Number.isFinite(machine.repairCount)) return false;
+      if (!('job' in machine)) return false;
+    }
+    if (!state.submissions || typeof state.submissions !== 'object') return false;
+    for (const row of this.submissionsData) {
+      const submission = state.submissions[row.id];
+      if (!submission || typeof submission !== 'object') return false;
+      if (!['active', 'ready', 'missed', 'claimed'].includes(submission.status)) return false;
+    }
+    const poiIds = new Set(this.poisData.map((poi) => poi.id));
+    for (const list of [state.scans, state.samples, state.reports]) {
+      if (!Array.isArray(list)) return false;
+      if (list.some((id) => !poiIds.has(id))) return false;
+    }
+    // Additive fields are validated only when the snapshot carries them, so a
+    // version-1 save without queues or trays still loads.
+    if (state.reportQueue !== undefined) {
+      if (!Array.isArray(state.reportQueue)) return false;
+      for (const item of state.reportQueue) {
+        if (!item || typeof item !== 'object') return false;
+        if (!poiIds.has(item.poiId)) return false;
+        if (!Number.isInteger(item.queuedTick) || item.queuedTick < 0) return false;
+        if (typeof item.source !== 'string') return false;
+      }
+    }
+    if (state.crops !== undefined) {
+      if (!Array.isArray(state.crops)) return false;
+      for (const crop of state.crops) {
+        if (crop === null) continue;
+        if (!crop || typeof crop !== 'object') return false;
+        if (!Number.isFinite(crop.progress) || crop.progress < 0) return false;
+      }
+    }
+    if (!state.supply || typeof state.supply !== 'object') return false;
+    if (!state.toggles || typeof state.toggles !== 'object') return false;
+    if (!state.stats || typeof state.stats !== 'object') return false;
+    if (state.stats.harvests !== undefined && !Number.isFinite(state.stats.harvests)) return false;
+    if (!state.flags || typeof state.flags !== 'object') return false;
+    if (!Array.isArray(state.firedEvents)) return false;
+    if (!Array.isArray(state.scanLog)) return false;
+    if (state.over !== null && !['victory', 'defeat'].includes(state.over)) return false;
+    if (state.cause !== null && typeof state.cause !== 'string') return false;
+    return true;
   }
 
   activeEvents() {
@@ -261,6 +374,35 @@ export class GameSim {
       return rad.insideStormPerTick * stormMult;
     }
     return 0;
+  }
+
+  /** Accumulated dose in millisieverts, derived from the 0-100 budget. */
+  getDoseMsv(points = this.state.radiation) {
+    return doseMsv(points);
+  }
+
+  /** Relay passes derive from the tick, so no schedule needs serializing. */
+  nextRelayTick(tick = this.state.tick) {
+    const { relayIntervalTicks: interval, relayPhaseTicks: phase } = this.economy.comms;
+    return tick + ((((phase - (tick % interval)) % interval) + interval) % interval);
+  }
+
+  isRelayPass(tick = this.state.tick) {
+    const { relayIntervalTicks: interval, relayPhaseTicks: phase } = this.economy.comms;
+    return tick % interval === phase;
+  }
+
+  getRelayStatus() {
+    const comms = this.economy.comms;
+    const nextTick = this.nextRelayTick();
+    return {
+      outage: this.isCommsOutage(),
+      nextTick,
+      inTicks: Math.max(0, nextTick - this.state.tick),
+      queued: this.state.reportQueue.length,
+      interval: comms.relayIntervalTicks,
+      phase: comms.relayPhaseTicks,
+    };
   }
 
   getConditionFactor(machineId) {
@@ -343,6 +485,7 @@ export class GameSim {
     this._runCrew(active);
     this._tickJobs();
     this._consequences(active);
+    this._processRelay();
     this._updateSubmissions();
     this._updateSupply();
     this._warnLowResources();
@@ -513,7 +656,6 @@ export class GameSim {
       let mult = 1;
       if (machineId === 'o2_system' && res === 'o2') mult = this.stats.o2_output;
       if (machineId === 'water_recycler' && res === 'water') mult = this.stats.water_output;
-      if (machineId === 'hydroponics' && res === 'food') mult = this.stats.food_output;
       outputs[res] = amount * mult * conditionFactor * eventMult;
     }
 
@@ -589,6 +731,15 @@ export class GameSim {
     applyProduction('o2_system', plans.o2_system);
     applyProduction('hydroponics', plans.hydroponics);
     applyProduction('water_recycler', plans.water_recycler);
+
+    // Crops advance only while hydroponics actually ran this hour: an off,
+    // broken, standby, busy or shed machine keeps every tray's progress.
+    if (plans.hydroponics.active) {
+      const cycleTicks = this.economy.hydroponics.cycleTicks;
+      for (const crop of s.crops) {
+        if (crop && crop.progress < cycleTicks) crop.progress += 1;
+      }
+    }
 
     s.lastPower = {
       demand: Number(demand.toFixed(2)),
@@ -701,11 +852,11 @@ export class GameSim {
     }
 
     if (s.radiation >= rad.deathDose && !s.over) {
-      this._endMission('defeat', 'radiation');
+      this._endMission('defeat', 'dose_limit');
     }
     if (s.health <= 0 && !s.over) {
       let cause = 'life_support';
-      if (s.radiation >= rad.damageAbove) cause = 'radiation';
+      if (s.radiation >= rad.damageAbove) cause = 'dose_limit';
       else if (s.nutrition <= 0) cause = 'starvation';
       else if (s.hydration <= 0) cause = 'dehydration';
       this._endMission('defeat', cause);
@@ -966,6 +1117,82 @@ export class GameSim {
     return { ok: true, dose };
   }
 
+  // -------------------------------------------------------------------------
+  // Hydroponic trays
+  // -------------------------------------------------------------------------
+
+  /** Pads, truncates and sanitizes a serialized crop list to the tray count. */
+  _normalizeCrops(list) {
+    const { trays, cycleTicks } = this.economy.hydroponics;
+    const crops = Array(trays).fill(null);
+    if (!Array.isArray(list)) return crops;
+    for (let index = 0; index < trays; index += 1) {
+      const crop = list[index];
+      if (crop && typeof crop === 'object' && Number.isFinite(crop.progress)) {
+        crops[index] = { progress: clamp(crop.progress, 0, cycleTicks) };
+      }
+    }
+    return crops;
+  }
+
+  getCropView(index) {
+    const cfg = this.economy.hydroponics;
+    const crop = this.state.crops[index] ?? null;
+    const progress = crop ? crop.progress : 0;
+    const empty = crop === null;
+    const stage = empty ? 0 : Math.min(cfg.stages, Math.floor(progress / (cfg.cycleTicks / cfg.stages)) + 1);
+    return {
+      index,
+      empty,
+      mature: !empty && progress >= cfg.cycleTicks,
+      stage,
+      stages: cfg.stages,
+      progress,
+      cycleTicks: cfg.cycleTicks,
+      remainingTicks: Math.max(0, cfg.cycleTicks - progress),
+      yieldFood: Math.round(cfg.yieldFood * this.stats.food_output),
+    };
+  }
+
+  getCropRows() {
+    return Array.from({ length: this.economy.hydroponics.trays }, (_, index) => this.getCropView(index));
+  }
+
+  plantTray(index) {
+    const s = this.state;
+    const cfg = this.economy.hydroponics;
+    const machine = s.machines.hydroponics;
+    const cost = cfg.plantCost;
+    if (!Number.isInteger(index) || index < 0 || index >= cfg.trays) return { ok: false, reason: 'bad_tray' };
+    if (!machine || machine.condition <= 0) return { ok: false, reason: 'broken' };
+    if (!machine.enabled) return { ok: false, reason: 'off' };
+    if (s.crops[index]) return { ok: false, reason: 'occupied' };
+    if (s.resources.water < cost.water) return { ok: false, reason: 'no_water' };
+    if (s.resources.energy < cost.energy) return { ok: false, reason: 'no_energy' };
+    s.resources.water -= cost.water;
+    s.resources.energy -= cost.energy;
+    s.crops[index] = { progress: 0 };
+    this._notify('crop_planted', { tray: index }, 'info');
+    this.log.add(s.tick, LOG_TYPES.NOTE, { note: 'crop_planted', tray: index });
+    return { ok: true };
+  }
+
+  harvestTray(index) {
+    const s = this.state;
+    const cfg = this.economy.hydroponics;
+    if (!Number.isInteger(index) || index < 0 || index >= cfg.trays) return { ok: false, reason: 'bad_tray' };
+    const crop = s.crops[index];
+    if (!crop) return { ok: false, reason: 'empty' };
+    if (crop.progress < cfg.cycleTicks) return { ok: false, reason: 'not_ready' };
+    const food = Math.round(cfg.yieldFood * this.stats.food_output);
+    s.resources.food = clamp(s.resources.food + food, 0, this.getResourceCapacity('food'));
+    s.crops[index] = null;
+    s.stats.harvests += 1;
+    this._notify('crop_harvested', { tray: index, food }, 'good');
+    this.log.add(s.tick, LOG_TYPES.NOTE, { note: 'crop_harvested', tray: index, food });
+    return { ok: true, food };
+  }
+
   _recountMinerals() {
     const counts = { water_ice: 0, ilmenite: 0, anorthite: 0, olivine: 0 };
     for (const slot of this.state.hotbar ?? []) {
@@ -1077,31 +1304,55 @@ export class GameSim {
   }
 
   sendReport(poiId) {
+    const s = this.state;
     const poi = this.poisData.find((p) => p.id === poiId);
     if (!poi) return { ok: false, reason: 'unknown_poi' };
-    if (!this.state.samples.includes(poiId)) return { ok: false, reason: 'no_sample' };
-    if (this.state.reports.includes(poiId)) return { ok: false, reason: 'already_sent' };
-    this.state.samples = this.state.samples.filter((id) => id !== poiId);
-    this.state.reports.push(poiId);
-    this.state.stats.reportsSent += 1;
-    this.log.add(this.state.tick, LOG_TYPES.REPORT, {
+    if (s.reports.includes(poiId)) return { ok: false, reason: 'already_sent' };
+    if (s.reportQueue.some((item) => item.poiId === poiId)) return { ok: false, reason: 'already_queued' };
+    if (!s.samples.includes(poiId)) return { ok: false, reason: 'no_sample' };
+    s.samples = s.samples.filter((id) => id !== poiId);
+    const nextRelayTick = this.nextRelayTick();
+    s.reportQueue.push({ poiId, queuedTick: s.tick, source: poi.source });
+    this._notify('report_queued', { poiId, nextRelayTick }, 'info');
+    this.log.add(s.tick, LOG_TYPES.NOTE, {
+      note: 'report_queued',
       poiId,
-      count: this.state.reports.length,
+      nextRelayTick,
       source: poi.source,
     });
-    this._notify('report_sent', { poiId, count: this.state.reports.length }, 'good');
+    return { ok: true, queued: true, nextRelayTick };
+  }
 
-    if (this.state.reports.length >= 3 && !this.state.over) {
+  /** Transmits the whole queue when a relay pass is open and the DSN is up. */
+  _processRelay() {
+    const s = this.state;
+    if (s.over) return;
+    if (!this.isRelayPass(s.tick)) return;
+    if (this.isCommsOutage()) return;
+    if (!s.reportQueue.length) return;
+
+    const batch = s.reportQueue.splice(0, s.reportQueue.length);
+    for (const item of batch) {
+      s.reports.push(item.poiId);
+      s.stats.reportsSent += 1;
+      this.log.add(s.tick, LOG_TYPES.REPORT, {
+        poiId: item.poiId,
+        count: s.reports.length,
+        source: item.source,
+      });
+      this._notify('report_sent', { poiId: item.poiId, count: s.reports.length }, 'good');
+    }
+
+    if (s.reports.length >= 3) {
       this._updateSubmissions();
       // The final contract is part of the victory beat; claim everything ready.
       for (const row of this.submissionsData) {
-        if (this.state.submissions[row.id].status === 'ready') {
+        if (s.submissions[row.id].status === 'ready') {
           this.claimSubmission(row.id, { silent: true });
         }
       }
       this._endMission('victory', 'mission_complete');
     }
-    return { ok: true };
   }
 
   claimSubmission(submissionId, { silent = false } = {}) {
@@ -1241,6 +1492,8 @@ export class GameSim {
       scans: [...s.scans],
       samples: [...s.samples],
       reports: [...s.reports],
+      reportQueue: s.reportQueue.map((item) => ({ ...item })),
+      crops: s.crops.map((crop) => (crop ? { progress: crop.progress } : null)),
       scanLog: s.scanLog.map((x) => ({ ...x })),
       minerals: { ...(s.minerals ?? { water_ice: 0, ilmenite: 0, anorthite: 0, olivine: 0 }) },
       hotbar: (s.hotbar ?? []).map((slot) => (slot ? { ...slot } : null)),
@@ -1285,6 +1538,8 @@ export class GameSim {
     s.scans = [...(preset.scans ?? [])];
     s.samples = [...(preset.samples ?? [])];
     s.reports = [...(preset.reports ?? [])];
+    s.reportQueue = Array.isArray(preset.reportQueue) ? preset.reportQueue.map((item) => ({ ...item })) : [];
+    s.crops = this._normalizeCrops(preset.crops);
     s.scanLog = (preset.scanLog ?? []).map((x) => ({ ...x }));
     s.hotbar = Array.isArray(preset.hotbar)
       ? preset.hotbar.slice(0, HOTBAR_SIZE).map((slot) => (slot ? { ...slot } : null))

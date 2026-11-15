@@ -3,6 +3,7 @@
  */
 
 import { STRINGS } from '../data/strings.js';
+import { formatMissionTime } from '../data/economy.js';
 import { getSource } from '../data/sources.js';
 import { escapeHtml, sourceBadge } from './helpers.js';
 import { icon } from './icons.js';
@@ -14,6 +15,7 @@ export class TitleScreen {
     this.callbacks = callbacks;
     this.node = null;
     this.mapInfo = null;
+    this.confirmTimer = null;
   }
 
   setMapInfo(mapData) {
@@ -25,12 +27,22 @@ export class TitleScreen {
     if (biome) biome.textContent = mapData.biome?.name ?? 'Artemis Highlands';
   }
 
-  show() {
-    if (this.node) {
-      this.node.classList.remove('hidden');
-      if (this.mapInfo) this.setMapInfo(this.mapInfo);
-      return this.node;
-    }
+  show({ save = null, error = null } = {}) {
+    this._clearConfirmTimer();
+    this.node?.remove();
+
+    const unavailable = error === 'unavailable';
+    const unreadable = error === 'corrupt' || error === 'version';
+    const hasSave = Boolean(save) && !unavailable && !unreadable;
+    const complete = hasSave && save.status === 'victory';
+    const primaryLabel = hasSave
+      ? complete
+        ? STRINGS['ui.continueFreeplay']
+        : STRINGS['ui.continueMission']
+      : STRINGS['ui.newGame'];
+    const primaryAction = hasSave ? 'continue' : 'new';
+    const saveLine = this._saveLine({ save, unavailable, unreadable });
+    const saveClass = unavailable || unreadable ? 'is-warning' : complete ? 'is-complete' : 'is-active';
     this.node = document.createElement('div');
     this.node.className = 'screen title-screen';
     this.node.innerHTML = `
@@ -46,7 +58,8 @@ export class TitleScreen {
             <button class="mission-card selected" data-mission="artemis">
               <div class="mission-card-top"><span class="mission-tag">ACTIVE SITE</span><span class="mission-check">${icon('check', 13)}</span></div>
               <strong>ARTEMIS RIDGE</strong>
-              <span>Outpost survival · 5 rooms · 9 machines · ISRU mining</span>
+<span>Outpost survival · 5 rooms · 9 machines · ISRU mining</span>
+${saveLine ? `<em class="mission-save-status ${saveClass}">${escapeHtml(saveLine)}</em>` : ''}
             </button>
             <button class="mission-card disabled" disabled>
               <div class="mission-card-top"><span class="mission-tag">COMING SOON</span></div>
@@ -63,7 +76,12 @@ export class TitleScreen {
           </div>
 
           <div class="title-actions">
-            <button class="btn btn-primary btn-large" data-action="start">${icon('play', 18)} START MISSION</button>
+            <button class="btn btn-primary btn-large" data-action="${primaryAction}">${icon('play', 18)} ${escapeHtml(primaryLabel)}</button>
+            ${
+              hasSave
+                ? `<button class="btn btn-secondary" data-action="new" data-confirm-new="true">${icon('wrench', 15)} ${escapeHtml(STRINGS['ui.newMission'])}</button>`
+                : ''
+            }
             <div class="demo-actions">
               <button class="btn btn-secondary" data-action="demo-mid">${icon('storm', 15)} DEMO · MID</button>
               <button class="btn btn-secondary" data-action="demo-final">${icon('comms', 15)} DEMO · FINAL</button>
@@ -102,9 +120,12 @@ export class TitleScreen {
       </div>
     `;
     this.host.append(this.node);
-    this.node.querySelector('[data-action="start"]').addEventListener('click', () => {
-      const seedVal = this.node.querySelector('#title-seed-input')?.value?.trim();
-      this.callbacks.onStart?.(seedVal || undefined);
+    this.node.querySelector('[data-action="continue"]')?.addEventListener('click', () => this.callbacks.onContinue?.());
+    this.node.querySelectorAll('[data-action="new"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (button.dataset.confirmNew === 'true') this._onNewMission(button);
+        else this.callbacks.onNewMission?.();
+      });
     });
     const seedInput = this.node.querySelector('#title-seed-input');
     seedInput?.addEventListener('change', () => {
@@ -121,11 +142,49 @@ export class TitleScreen {
     return this.node;
   }
 
+  _saveLine({ save, unavailable, unreadable }) {
+    if (unavailable) return STRINGS['ui.saveUnavailable'];
+    if (unreadable) return STRINGS['ui.saveUnreadable'];
+    if (!save) return '';
+    const when = formatMissionTime(save.tick).toUpperCase();
+    if (save.status === 'victory') return `${STRINGS['ui.saveComplete']} · ${when}`;
+    return `${STRINGS['ui.saveInProgress']} · ${when}`;
+  }
+
+  _onNewMission(button) {
+    if (button.dataset.confirming === 'true') {
+      this._clearConfirmTimer();
+      this.callbacks.onNewMission?.();
+      return;
+    }
+    button.dataset.confirming = 'true';
+    button.classList.add('confirming');
+    button.textContent = STRINGS['ui.overwriteSave'];
+    this.confirmTimer = window.setTimeout(() => this._resetNewMission(button), 4000);
+  }
+
+  _resetNewMission(button) {
+    this.confirmTimer = null;
+    if (!button?.isConnected) return;
+    button.dataset.confirming = 'false';
+    button.classList.remove('confirming');
+    button.textContent = STRINGS['ui.newMission'];
+  }
+
+  _clearConfirmTimer() {
+    if (this.confirmTimer != null) {
+      window.clearTimeout(this.confirmTimer);
+      this.confirmTimer = null;
+    }
+  }
+
   hide() {
+    this._clearConfirmTimer();
     this.node?.classList.add('hidden');
   }
 
   destroy() {
+    this._clearConfirmTimer();
     this.node?.remove();
     this.node = null;
   }
@@ -228,10 +287,11 @@ export class EvaluationScreen {
     this.result = null;
   }
 
-  open(sim) {
+  open(sim, { saveOutcome = null } = {}) {
     this.result = buildEvaluation(sim);
     this.node?.remove();
     const result = this.result;
+    const saveNote = this._saveNote(saveOutcome);
     const gradeClass = `grade-${result.grade}`;
     this.node = document.createElement('div');
     this.node.className = `screen evaluation-screen ${result.victory ? 'victory' : 'defeat'}`;
@@ -326,7 +386,7 @@ export class EvaluationScreen {
           ${result.victory ? `<button class="btn btn-secondary" data-action="retry">${icon('wrench', 16)} Run it again</button>` : ''}
           <button class="btn btn-secondary" data-action="sources">${icon('source', 16)} Data sources</button>
           <button class="btn btn-ghost" data-action="menu">${icon('arrow', 16)} Main menu</button>
-          <span class="eval-note">No save file. This run ends here.</span>
+          <span class="eval-note save-${saveOutcome ?? 'demo'}">${escapeHtml(saveNote)}</span>
         </footer>
       </div>
     `;
@@ -342,6 +402,21 @@ export class EvaluationScreen {
     });
     this.node.classList.add('visible');
     return this.node;
+  }
+
+  _saveNote(saveOutcome) {
+    switch (saveOutcome) {
+      case 'kept':
+        return STRINGS['ui.saveKept'];
+      case 'deleted':
+        return STRINGS['ui.saveDeleted'];
+      case 'completed_kept':
+        return STRINGS['ui.saveCompletedKept'];
+      case 'unavailable':
+        return STRINGS['ui.saveUnavailableNote'];
+      default:
+        return STRINGS['ui.saveDemo'];
+    }
   }
 
   close() {

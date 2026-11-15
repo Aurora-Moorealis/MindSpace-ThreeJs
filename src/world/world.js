@@ -103,9 +103,10 @@ function rotateLocal(x, z, rotation) {
 }
 
 export class World {
-  constructor(scene, sim, { mapSeed = null } = {}) {
+  constructor(scene, sim, { models = null, mapSeed = null } = {}) {
     this.scene = scene;
     this.sim = sim;
+    this.models = models;
     this.group = new THREE.Group();
     this.scene.add(this.group);
     this._staticColliders = [];
@@ -121,6 +122,9 @@ export class World {
     this.prototypeTruck = NASA_PROTOTYPE_TRUCK;
     this.exteriorGroup = null;
     this.mapData = null;
+    this.missionStates = new Map();
+    this.currentMissionTarget = null;
+    this.missionMarkerSignature = '';
     this.stateAccum = 0;
     this.nearestId = null;
 
@@ -133,7 +137,7 @@ export class World {
     this._buildSolarPowerCable();
     this._buildRoomSigns();
 
-    this.astronaut = new Astronaut();
+    this.astronaut = new Astronaut(models?.astronaut);
     this.group.add(this.astronaut.group);
 
     this._buildHighlight();
@@ -176,7 +180,7 @@ export class World {
     this.colliders = [...this._staticColliders];
     this.interactables = [...this._staticInteractables];
 
-    this.exterior = buildExterior(this.mapData);
+    this.exterior = buildExterior(this.mapData, this.models);
     this.exteriorGroup.add(this.exterior.group);
     this.colliders.push(...this.exterior.colliders);
 
@@ -184,8 +188,8 @@ export class World {
     this._buildMineralVeins();
     this._buildNasaTruck();
 
-    if (this.objectiveTarget) {
-      this.setObjective(this.objectiveTarget);
+    if (this.currentMissionTarget) {
+      this.setObjective(this.currentMissionTarget);
     }
     return this.mapData;
   }
@@ -538,53 +542,158 @@ export class World {
     this.group.add(this.highlight);
   }
 
-  _buildObjectiveMarker() {
+  _buildBeacon({ height = 5.5, top = 0.12, bottom = 0.35, diamondSize = 0.28, ringRadius = 0.5, labelHeight = 5.6 } = {}) {
     const group = new THREE.Group();
     const beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.12, 0.35, 5.5, 12, 1, true),
+      new THREE.CylinderGeometry(top, bottom, height, 12, 1, true),
       new THREE.MeshBasicMaterial({
         color: COLORS.teal,
         transparent: true,
         opacity: 0.12,
         side: THREE.DoubleSide,
         depthWrite: false,
+        depthTest: false,
         blending: THREE.AdditiveBlending,
       })
     );
-    beam.position.y = 2.75;
+    beam.position.y = height * 0.5;
+    beam.renderOrder = 24;
     group.add(beam);
     const diamond = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.28, 0),
-      new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false })
+      new THREE.OctahedronGeometry(diamondSize, 0),
+      new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false, depthTest: false })
     );
-    diamond.position.y = 5.6;
+    diamond.position.y = labelHeight;
+    diamond.renderOrder = 25;
     group.add(diamond);
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(0.5, 0.035, 6, 28),
-      new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false, transparent: true, opacity: 0.8 })
+      new THREE.TorusGeometry(ringRadius, 0.035, 6, 28),
+      new THREE.MeshBasicMaterial({
+        color: COLORS.teal,
+        toneMapped: false,
+        transparent: true,
+        opacity: 0.8,
+        depthTest: false,
+      })
     );
     ring.rotation.x = Math.PI / 2;
-    ring.position.y = 5.2;
+    ring.position.y = labelHeight - 0.4;
+    ring.renderOrder = 25;
     group.add(ring);
     group.visible = false;
-    this.objective = { group, beam, diamond, ring };
-    this.group.add(group);
+    return { group, beam, diamond, ring, diamondY: labelHeight };
   }
 
+  _buildObjectiveMarker() {
+    this.objective = this._buildBeacon();
+    this.group.add(this.objective.group);
+  }
+
+  _buildCommsMarker() {
+    const pos = MACHINES.comms_console.position;
+    this.commsMarker = this._buildBeacon({
+      height: 4.6,
+      top: 0.08,
+      bottom: 0.22,
+      diamondSize: 0.22,
+      ringRadius: 0.4,
+      labelHeight: 4.7,
+    });
+    this.commsMarker.group.position.set(pos[0], 0, pos[2]);
+    this.commsMarker.group.visible = true;
+    this.group.add(this.commsMarker.group);
+
+    this.commsLabel = new WorldLabel('COMMS', { worldWidth: 3.4, height: 150, fontSize: 42 });
+    this.commsLabel.sprite.position.set(pos[0], 4.15, pos[2]);
+    this.commsLabel.sprite.renderOrder = 30;
+    this.commsLabel.material.depthTest = false;
+    this.group.add(this.commsLabel.sprite);
+  }
+
+  /**
+   * Single entry point for mission guidance. The current target comes from the
+   * same objective calculation as the HUD, so world and HUD cannot diverge.
+   */
+  setMissionMarkers({ currentId = null, scans = [], samples = [], reports = [], reportQueue = [] } = {}) {
+    const signature = `${currentId ?? ''}|${scans.join(',')}|${samples.join(',')}|${reports.join(',')}|${reportQueue.join(',')}`;
+    if (signature === this.missionMarkerSignature) return;
+    this.missionMarkerSignature = signature;
+    this.currentMissionTarget = currentId;
+    const reported = new Set(reports);
+    const queued = new Set(reportQueue);
+    const sampled = new Set(samples);
+
+    for (const poi of POIS) {
+      // A report waiting for the relay pass still means the site is surveyed:
+      // it must never fall back to the unscanned state.
+      const state = reported.has(poi.id)
+        ? 'reported'
+        : queued.has(poi.id)
+          ? 'queued'
+          : sampled.has(poi.id)
+            ? 'sampled'
+            : 'pending';
+      this.missionStates.set(poi.id, state);
+      const current = currentId === poi.id;
+      this.poiVisuals.get(poi.id)?.setMissionState(state, current);
+      this._updatePoiLabel(poi, state, current);
+    }
+
+    const commsCurrent = currentId === 'comms_console';
+    if (this.commsMarker) {
+      const color = commsCurrent ? COLORS.teal : COLORS.metal;
+      this.commsMarker.current = commsCurrent;
+      this.commsMarker.beam.material.color.setHex(color);
+      this.commsMarker.diamond.material.color.setHex(color);
+      this.commsMarker.ring.material.color.setHex(color);
+      this.commsMarker.beam.material.opacity = commsCurrent ? 0.2 : 0.05;
+      this.commsLabel?.update(
+        'COMMS',
+        commsCurrent ? 'DELIVER SAMPLE' : 'REPORT TERMINAL',
+        commsCurrent ? '#eef5ff' : '#9db4cc'
+      );
+    }
+
+    // The generic beacon is reserved for non-POI targets; current POIs use
+    // their own beacon so two beams never overlap on the same site.
+    const genericTarget = Boolean(currentId && currentId !== 'comms_console' && !POIS.some((p) => p.id === currentId));
+    this.objective.group.visible = genericTarget;
+    if (genericTarget) {
+      const item = this.getInteractable(currentId);
+      if (item) this.objective.group.position.set(item.position.x, 0, item.position.z);
+    }
+  }
+
+  /** Kept as a thin compatibility wrapper for old callers. */
   setObjective(targetId) {
-    if (!targetId) {
-      this.objective.group.visible = false;
-      this.objectiveTarget = null;
-      return;
+    this.setMissionMarkers({
+      currentId: targetId,
+      scans: this.sim.state.scans,
+      samples: this.sim.state.samples,
+      reports: this.sim.state.reports,
+      reportQueue: this.sim.state.reportQueue.map((item) => item.poiId),
+    });
+  }
+
+  _updatePoiLabel(poi, state, current) {
+    const label = this.poiLabels.get(poi.id);
+    if (!label) return;
+    let status = 'UNSCANNED';
+    let accent = '#4de2ff';
+    if (state === 'reported') {
+      status = 'REPORT SENT';
+      accent = '#6ee7a8';
+    } else if (state === 'queued') {
+      status = 'QUEUED';
+      accent = '#ffb347';
+    } else if (state === 'sampled') {
+      status = 'SAMPLE READY · TAKE TO COMMS';
+      accent = '#ffb347';
+    } else if (current) {
+      status = 'NEXT SURVEY';
+      accent = '#eef5ff';
     }
-    const interactable = this.interactables.find((item) => item.id === targetId);
-    if (!interactable) {
-      this.objective.group.visible = false;
-      return;
-    }
-    this.objectiveTarget = targetId;
-    this.objective.group.visible = true;
-    this.objective.group.position.set(interactable.position.x, interactable.position.y, interactable.position.z);
+    label.update(`SITE ${poi.code} · ${STRINGS[poi.nameKey]}`, status, accent);
   }
 
   getRoomAt(x, z) {
@@ -749,6 +858,7 @@ export class World {
       mineTarget = null,
       pickaxeEquipped = true,
       moving = false,
+      sprinting = false,
       outside = false,
       time = 0,
       storm = 0,
@@ -765,7 +875,7 @@ export class World {
     const playerPos = this.astronaut.group.position;
     this.astronaut.setGroundY(outside ? this.getTerrainHeight(playerPos.x, playerPos.z) - 0.06 : 0);
     this.astronaut.setPickaxeEquipped(pickaxeEquipped);
-    this.astronaut.update(dt, moving, Boolean(mineTarget));
+    this.astronaut.update(dt, moving, sprinting ? 1.5 : 1, Boolean(mineTarget));
     this.nearestId = nearest?.id ?? null;
 
     const now = performance.now();
@@ -790,22 +900,8 @@ export class World {
       }
       // POI labels.
       for (const poi of this.pois) {
-        const label = this.poiLabels.get(poi.id);
-        if (!label) continue;
-        const scanned = sim.state.scans.includes(poi.id);
-        const reported = sim.state.reports.includes(poi.id);
-        const sample = sim.state.samples.includes(poi.id);
-        let status = scanned ? 'SAMPLE READY' : 'UNSCANNED';
-        let accent = '#4de2ff';
-        if (sample) {
-          status = 'SAMPLE READY · TAKE TO COMMS';
-          accent = '#ffb347';
-        }
-        if (reported) {
-          status = 'REPORT SENT';
-          accent = '#6ee7a8';
-        }
-        label.update(`SITE ${poi.code} · ${STRINGS[poi.nameKey]}`, status, accent);
+        const state = this.missionStates.get(poi.id) ?? 'pending';
+        this._updatePoiLabel(poi, state, this.currentMissionTarget === poi.id);
       }
     }
 
@@ -834,6 +930,13 @@ export class World {
       if (!visual) continue;
       const scanned = sim.state.scans.includes(poi.id);
       const progress = scanTarget === poi.id ? scanProgress : scanned ? 1 : 0;
+      const missionState = this.missionStates.get(poi.id) ?? 'pending';
+      const missionCurrent = this.currentMissionTarget === poi.id;
+      if (visual._lastMissionState !== missionState || visual._lastMissionCurrent !== missionCurrent) {
+        visual._lastMissionState = missionState;
+        visual._lastMissionCurrent = missionCurrent;
+        visual.setMissionState(missionState, missionCurrent);
+      }
       if (visual._lastProgress !== progress || visual._lastScanned !== scanned) {
         visual._lastProgress = progress;
         visual._lastScanned = scanned;
@@ -873,16 +976,38 @@ export class World {
       if (label.sprite.renderOrder !== wantOrder) label.sprite.renderOrder = wantOrder;
     }
 
-    // Objective beacon.
+    // Comms marker label: permanent, but only legible near the base.
+    if (this.commsLabel) {
+      const comms = MACHINES.comms_console.position;
+      const commsDistance = Math.hypot(player.x - comms[0], player.z - comms[2]);
+      this.commsLabel.sprite.visible = commsDistance < 30;
+      this.commsLabel.material.opacity = Math.min(1, Math.max(0.15, 1.25 - commsDistance / 30));
+    }
+
+    // Mission beacons.
     if (this.objective.group.visible) {
-      const t = now * 0.001;
-      this.objective.diamond.rotation.y += dt * 1.2;
-      this.objective.diamond.position.y = 5.6 + Math.sin(t * 2.2) * 0.15;
-      this.objective.ring.rotation.z += dt * 0.8;
-      this.objective.beam.material.opacity = 0.09 + Math.sin(t * 1.4) * 0.03;
+      this._animateBeacon(this.objective, dt, { current: true });
+    }
+    if (this.commsMarker?.group.visible) {
+      this._animateBeacon(this.commsMarker, dt, {
+        current: Boolean(this.commsMarker.current),
+        dim: !this.commsMarker.current,
+      });
     }
 
     this.exterior.update(dt, storm);
+  }
+
+  _animateBeacon(marker, dt, { current = false, dim = false } = {}) {
+    const t = performance.now() * 0.001;
+    marker.diamond.rotation.y += dt * (current ? 2.0 : 0.8);
+    marker.diamond.position.y = marker.diamondY + Math.sin(t * (current ? 3.0 : 2.0)) * (current ? 0.18 : 0.08);
+    marker.ring.rotation.z += dt * (current ? 1.3 : 0.4);
+    marker.beam.material.opacity = current
+      ? 0.2 + Math.sin(t * 2.4) * 0.05
+      : dim
+        ? 0.04
+        : 0.09 + Math.sin(t * 1.4) * 0.02;
   }
 
   /** Called when a scan begins/ends so the ring starts at zero cleanly. */
