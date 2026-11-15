@@ -9,6 +9,8 @@ import { escapeHtml, sourceBadge } from './helpers.js';
 import { icon } from './icons.js';
 import { buildEvaluation } from '../core/evaluation.js';
 
+const REPO_URL = 'https://github.com/Aurora-Moorealis/MindSpace-ThreeJs';
+
 export class TitleScreen {
   constructor(host, callbacks = {}) {
     this.host = host;
@@ -118,6 +120,17 @@ ${saveLine ? `<em class="mission-save-status ${saveClass}">${escapeHtml(saveLine
         <span>ARTEMIS RIDGE · LUNAR SOUTH POLE</span>
         <span>DESKTOP KEYBOARD & MOUSE</span>
       </div>
+      <a
+        class="title-repo-link"
+        href="${REPO_URL}"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="View the MindSpace source code on GitHub"
+        aria-label="View the MindSpace source code on GitHub (opens in a new tab)"
+      >
+        ${icon('github', 20)}
+        <span>GitHub</span>
+      </a>
     `;
     this.host.append(this.node);
     this.node.querySelector('[data-action="continue"]')?.addEventListener('click', () => this.callbacks.onContinue?.());

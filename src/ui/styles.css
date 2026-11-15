@@ -2211,6 +2211,65 @@ kbd {
   letter-spacing: 0.14em;
 }
 
+/* Repository link for evaluators: always pinned to the bottom-right corner,
+   above the footer, on the title screen only. */
+.title-repo-link {
+  position: fixed;
+  right: clamp(14px, 3vw, 34px);
+  bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 15px;
+  border: 1px solid rgba(126, 190, 230, 0.32);
+  background: linear-gradient(165deg, rgba(10, 22, 37, 0.94), rgba(4, 9, 16, 0.92));
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 24px rgba(77, 226, 255, 0.05);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-decoration: none;
+  transition: border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.title-repo-link .icon {
+  flex: none;
+  color: var(--teal);
+  transition: color 0.18s ease;
+}
+
+.title-repo-link:hover,
+.title-repo-link:focus-visible {
+  border-color: rgba(77, 226, 255, 0.7);
+  color: #bff7ff;
+  text-decoration: none;
+  transform: translateY(-2px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 24px rgba(77, 226, 255, 0.18);
+}
+
+.title-repo-link:hover .icon,
+.title-repo-link:focus-visible .icon {
+  color: #bff7ff;
+}
+
+.title-repo-link:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+}
+
+/* Short or narrow viewports scroll the title, so tuck the link into the corner
+   instead of floating it above the footer. */
+@media (max-width: 860px), (max-height: 560px) {
+  .title-repo-link {
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 8px 12px;
+    font-size: 11px;
+  }
+}
+
 /* Intro */
 
 .intro-screen {
