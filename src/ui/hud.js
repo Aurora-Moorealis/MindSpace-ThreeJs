@@ -61,6 +61,7 @@ export class HUD {
             <button class="speed-btn" data-speed="5" title="×5 — 12 s per game hour">×5</button>
             <button class="speed-btn" data-speed="10" title="×10 — 6 s per game hour">×10</button>
           </div>
+          <button class="icon-btn" data-action="compact" title="Toggle compact HUD">HUD</button>
           <button class="icon-btn" data-action="pause" title="Pause (P)">${svgIcon('pause', 18)}</button>
           <button class="icon-btn" data-action="sound" title="Mute / unmute (M)">${svgIcon('sound', 18)}</button>
           <button class="icon-btn" data-action="menu" title="Pause menu (Esc)">${svgIcon('menu', 18)}</button>
@@ -118,7 +119,7 @@ export class HUD {
           </div>
         </section>
 
-        <section class="panel contracts-panel">
+        <section class="panel contracts-panel collapsed">
           <div class="panel-heading"><span>${svgIcon('contract', 14)} CONTRACTS</span><span class="panel-hint" id="hud-contract-count">0/4</span></div>
           <div id="hud-contracts"></div>
         </section>
@@ -269,6 +270,16 @@ export class HUD {
     });
     this.refs.invSlots.forEach((slot, index) => {
       slot.node.addEventListener('click', () => this.callbacks.onSlot?.(index));
+    });
+    this.root.querySelector('[data-action="compact"]').addEventListener('click', (event) => {
+      const compact = this.root.classList.toggle('hud-compact');
+      event.currentTarget.classList.toggle('active', compact);
+    });
+    this.root.querySelectorAll('.panel-heading').forEach((heading) => {
+      heading.title = 'Click to collapse / expand';
+      heading.addEventListener('click', () => {
+        heading.closest('.panel')?.classList.toggle('collapsed');
+      });
     });
     this.root.querySelector('[data-action="pause"]').addEventListener('click', () => this.callbacks.onPause?.());
     this.root.querySelector('[data-action="menu"]').addEventListener('click', () => this.callbacks.onMenu?.());
