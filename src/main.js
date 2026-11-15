@@ -34,6 +34,7 @@ import { loadDemoPreset } from './data/demo-states.js';
 import { MACHINES } from './data/machines.js';
 import { POIS } from './data/pois.js';
 import { MINERALS, NASA_PROTOTYPE_TRUCK } from './data/minerals.js';
+import { randomSeed } from './world/map-gen.js';
 import { STRINGS } from './data/strings.js';
 import { ECONOMY } from './data/economy.js';
 
@@ -346,9 +347,19 @@ function setupUI(screenLayer, drawerLayer) {
   });
 
   titleScreen = new TitleScreen(screenLayer, {
-    onStart: () => {
+    onStart: (seed) => {
       audio.unlock();
-      startNewGame();
+      startNewGame({ mapSeed: seed });
+    },
+    onSeedChange: (seed) => {
+      const mapData = world.regenerateExterior(seed);
+      titleScreen.setMapInfo(mapData);
+      audio.play('click');
+    },
+    onRandomSeed: () => {
+      const mapData = world.regenerateExterior(randomSeed());
+      titleScreen.setMapInfo(mapData);
+      audio.play('click');
     },
     onDemo: (id) => {
       audio.unlock();
@@ -357,6 +368,7 @@ function setupUI(screenLayer, drawerLayer) {
     onSources: () => openSources(),
     onControls: () => controlsModal.open(),
   });
+  if (world?.mapData) titleScreen.setMapInfo(world.mapData);
 
   introScreen = new IntroScreen(screenLayer, {
     onNext: () => advanceIntro(),
@@ -1046,7 +1058,7 @@ function goToTitle(initial = false) {
   if (!initial) audio.play('click');
 }
 
-function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false } = {}) {
+function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false, mapSeed = null } = {}) {
   if (app.transitioning) return;
   app.transitioning = true;
   app.session += 1;
@@ -1069,6 +1081,12 @@ function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false
   if (debugOverlay?.visible) debugOverlay.toggle();
 
   sim.reset();
+  if (mapSeed != null && String(mapSeed) !== String(world.mapData?.seed)) {
+    world.regenerateExterior(mapSeed);
+    titleScreen?.setMapInfo(world.mapData);
+  }
+  sim.state.mapSeed = world.mapData?.seed ?? null;
+  sim.state.mapBiome = world.mapData?.biome?.name ?? null;
   app.paused = false;
   app.speed = 1;
   sim.state.speed = 1;
@@ -1279,8 +1297,10 @@ function refreshHud(cachedNearest = undefined) {
   if (!hud || !sim) return;
   const roomId = world.getRoomAt(app.player.x, app.player.z);
   let zoneLabel = 'HABITAT';
-  if (app.outside) zoneLabel = 'LUNAR SURFACE';
-  else if (app.inShelter && sim.state.shelterLocked) zoneLabel = 'STORM SHELTER';
+  if (app.outside) {
+    const biomeName = world.mapData?.biome?.name?.toUpperCase() ?? 'LUNAR SURFACE';
+    zoneLabel = world.mapData?.seed ? `${biomeName} · #${world.mapData.seed}` : biomeName;
+  } else if (app.inShelter && sim.state.shelterLocked) zoneLabel = 'STORM SHELTER';
   else zoneLabel = STRINGS[ROOMS[roomId]?.key] ?? 'HABITAT';
   const suppress = app.phase !== 'game' || app.paused || app.panel;
   const nearest = suppress

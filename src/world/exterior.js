@@ -16,10 +16,11 @@ import {
   seededRandom,
   sphere,
 } from './primitives.js';
+import { generateProceduralMap } from './map-gen.js';
 
-function makeMoonTexture() {
+function makeMoonTexture(seed = 7) {
   return makeCanvasTexture(512, 512, (ctx, w, h) => {
-    const rand = seededRandom(7);
+    const rand = seededRandom(seed);
     ctx.fillStyle = '#8b8b91';
     ctx.fillRect(0, 0, w, h);
     for (let i = 0; i < 6500; i += 1) {
@@ -58,12 +59,13 @@ function makeCraterTexture() {
 }
 
 export class ExteriorBuilder {
-  constructor() {
+  constructor(mapData = null) {
+    this.mapData = mapData ?? generateProceduralMap();
     this.group = new THREE.Group();
     this.colliders = [];
     this.dust = null;
     this.animated = [];
-    this.moonTexture = makeMoonTexture();
+    this.moonTexture = makeMoonTexture(this.mapData.seed);
     this.moonTexture.wrapS = THREE.RepeatWrapping;
     this.moonTexture.wrapT = THREE.RepeatWrapping;
     this.moonTexture.repeat.set(10, 10);
@@ -80,20 +82,21 @@ export class ExteriorBuilder {
   }
 
   ground() {
-    const geo = new THREE.PlaneGeometry(220, 220, 48, 48);
+    const geo = new THREE.PlaneGeometry(220, 220, 64, 64);
     const position = geo.attributes.position;
+    const heightAt = this.mapData.heightAt;
     for (let i = 0; i < position.count; i += 1) {
-      const x = position.getX(i);
-      const y = position.getY(i);
-      const bump =
-        Math.sin(x * 0.09) * Math.cos(y * 0.07) * 0.08 +
-        Math.sin(x * 0.31 + y * 0.17) * 0.035;
+      const localX = position.getX(i);
+      const localY = position.getY(i);
+      const worldX = -8 + localX;
+      const worldZ = 30 - localY;
+      const bump = heightAt ? heightAt(worldX, worldZ) : 0;
       position.setZ(i, bump);
     }
     geo.computeVertexNormals();
     const mat = new THREE.MeshStandardMaterial({
       map: this.moonTexture,
-      color: 0xc8c6c1,
+      color: this.mapData.biome?.groundColor ?? 0xc8c6c1,
       roughness: 1,
       metalness: 0,
       flatShading: true,
@@ -119,70 +122,45 @@ export class ExteriorBuilder {
   }
 
   craters() {
-    const rand = seededRandom(42);
     const craterMat = new THREE.MeshBasicMaterial({
       map: this.craterTexture,
       transparent: true,
       depthWrite: false,
       toneMapped: false,
     });
-    const positions = [
-      [-18, 33, 9],
-      [4, 43, 11],
-      [20, 51, 8],
-      [-34, 28, 7],
-      [32, 36, 6],
-      [-12, 52, 7],
-      [42, 55, 13],
-      [-42, 48, 10],
-      [0, 24, 4],
-    ];
-    for (let i = 0; i < 8; i += 1) {
-      positions.push([-46 + rand() * 92, 20 + rand() * 44, 2.5 + rand() * 5]);
-    }
-    for (const [x, z, size] of positions) {
-      const crater = new THREE.Mesh(new THREE.PlaneGeometry(size, size), craterMat);
+    for (const c of this.mapData.craters) {
+      const crater = new THREE.Mesh(new THREE.PlaneGeometry(c.size, c.size), craterMat);
       crater.rotation.x = -Math.PI / 2;
-      crater.rotation.z = rand() * Math.PI * 2;
-      crater.position.set(x, -0.09, z);
+      crater.rotation.z = c.rotationZ;
+      crater.position.set(c.x, -0.09, c.z);
       crater.renderOrder = 1;
       this.group.add(crater);
     }
   }
 
   rocks() {
-    const rand = seededRandom(1234);
-    const rockMat = material(0x7f7f86, { roughness: 0.95, flatShading: true });
-    const rockMatLight = material(0x96969c, { roughness: 0.95, flatShading: true });
-    for (let i = 0; i < 55; i += 1) {
-      const x = -52 + rand() * 104;
-      const z = 18 + rand() * 48;
-      // Keep the central airlock corridor and the three POIs readable.
-      if (Math.hypot(x, z - 20) < 7) continue;
-      if (Math.hypot(x + 16, z - 31) < 3.4) continue;
-      if (Math.hypot(x - 2, z - 41) < 3.4) continue;
-      if (Math.hypot(x - 18, z - 49) < 3.4) continue;
-      const size = 0.3 + rand() * 2.2;
+    const rockMat = material(this.mapData.biome?.rockColor ?? 0x7f7f86, { roughness: 0.95, flatShading: true });
+    const rockMatLight = material(this.mapData.biome?.rockLightColor ?? 0x96969c, { roughness: 0.95, flatShading: true });
+    for (const r of this.mapData.rocks) {
+      const yBase = this.mapData.heightAt ? this.mapData.heightAt(r.x, r.z) : 0;
       const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(size, 0),
-        rand() > 0.5 ? rockMat : rockMatLight
+        new THREE.DodecahedronGeometry(r.size, 0),
+        r.light ? rockMatLight : rockMat
       );
-      rock.position.set(x, -0.1 + size * 0.35, z);
-      rock.rotation.set(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
-      rock.scale.y = 0.55 + rand() * 0.6;
+      rock.position.set(r.x, -0.1 + yBase + r.size * 0.35, r.z);
+      rock.rotation.set(r.rx, r.ry, r.rz);
+      rock.scale.y = r.scaleY;
       rock.castShadow = true;
       rock.receiveShadow = true;
       this.group.add(rock);
-      if (size > 1.4) this.addCollider(x, z, size * 1.6, size * 1.6);
+      if (r.size > 1.4) this.addCollider(r.x, r.z, r.size * 1.6, r.size * 1.6);
     }
 
     // A rocky ridge at the far edge.
-    for (let i = 0; i < 16; i += 1) {
-      const x = -52 + i * 6.5;
-      const size = 2.5 + rand() * 2.5;
-      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(size, 0), rockMat);
-      rock.position.set(x, -0.2 + size * 0.25, 65 + rand() * 3);
-      rock.rotation.set(rand(), rand(), rand());
+    for (const r of this.mapData.ridge) {
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r.size, 0), rockMat);
+      rock.position.set(r.x, -0.2 + r.size * 0.25, r.z);
+      rock.rotation.set(r.rx, r.ry, r.rz);
       rock.scale.y = 0.6;
       rock.castShadow = true;
       this.group.add(rock);
@@ -191,16 +169,14 @@ export class ExteriorBuilder {
 
   pathMarkers() {
     const teal = new THREE.MeshBasicMaterial({ color: COLORS.teal, toneMapped: false });
-    for (let i = 0; i < 9; i += 1) {
-      const z = 19 + i * 4.2;
-      for (const x of [-3.2, 3.2]) {
-        const post = box(0.06, 0.55, 0.06, COLORS.metal);
-        post.position.set(x, 0.24, z);
-        this.group.add(post);
-        const tip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 4), teal);
-        tip.position.set(x, 0.55, z);
-        this.group.add(tip);
-      }
+    for (const m of this.mapData.pathMarkers) {
+      const yBase = this.mapData.heightAt ? this.mapData.heightAt(m.x, m.z) : 0;
+      const post = box(0.06, 0.55, 0.06, COLORS.metal);
+      post.position.set(m.x, 0.24 + yBase, m.z);
+      this.group.add(post);
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 4), teal);
+      tip.position.set(m.x, 0.55 + yBase, m.z);
+      this.group.add(tip);
     }
   }
 
@@ -291,32 +267,29 @@ export class ExteriorBuilder {
     });
     beacon.position.set(0, 4.85, 0);
     group.add(beacon);
-    group.position.set(-38, -0.1, 47);
-    group.rotation.y = 0.7;
+    const landerCfg = this.mapData.lander ?? { x: -38, z: 47, rotationY: 0.7 };
+    const landerY = (this.mapData.heightAt ? this.mapData.heightAt(landerCfg.x, landerCfg.z) : 0) - 0.1;
+    group.position.set(landerCfg.x, landerY, landerCfg.z);
+    group.rotation.y = landerCfg.rotationY ?? 0.7;
     this.group.add(group);
-    this.addCollider(-38, 47, 5.0, 5.0);
+    this.addCollider(landerCfg.x, landerCfg.z, 5.0, 5.0);
     this.animated.push(() => {
       beacon.visible = Math.sin(performance.now() * 0.003) > 0.5;
     });
   }
 
   cargo() {
-    const rand = seededRandom(88);
-    for (const [x, z, color, size] of [
-      [-7.5, 19.4, 0x6f7b8a, 1.2],
-      [7.8, 18.8, 0x7a6f5e, 0.9],
-      [-26, 26, 0x66707c, 1.4],
-      [30, 44, 0x5f6b79, 1.3],
-    ]) {
-      const crate = rounded(size, size * 0.85, size, 0.06, color);
-      crate.position.set(x, size * 0.42 - 0.08, z);
-      crate.rotation.y = rand() * Math.PI;
+    for (const c of this.mapData.crates) {
+      const yBase = this.mapData.heightAt ? this.mapData.heightAt(c.x, c.z) : 0;
+      const crate = rounded(c.size, c.size * 0.85, c.size, 0.06, c.color);
+      crate.position.set(c.x, yBase + c.size * 0.42 - 0.08, c.z);
+      crate.rotation.y = c.rotationY;
       this.group.add(crate);
-      const band = box(size * 1.03, 0.1, size * 1.03, COLORS.amber);
-      band.position.set(x, size * 0.58 - 0.08, z);
+      const band = box(c.size * 1.03, 0.1, c.size * 1.03, COLORS.amber);
+      band.position.set(c.x, yBase + c.size * 0.58 - 0.08, c.z);
       band.rotation.y = crate.rotation.y;
       this.group.add(band);
-      this.addCollider(x, z, size * 1.3, size * 1.3);
+      this.addCollider(c.x, c.z, c.size * 1.3, c.size * 1.3);
     }
   }
 
@@ -354,22 +327,17 @@ export class ExteriorBuilder {
   }
 
   workLights() {
-    const positions = [
-      [13, 28, COLORS.amber],
-      [-16, 34, COLORS.teal],
-      [2, 44, COLORS.teal],
-      [18, 52, COLORS.teal],
-      [0, 21, COLORS.amber],
-    ];
-    for (const [x, z, color] of positions) {
+    for (const light of this.mapData.workLights) {
+      const color = light.color === 'amber' ? COLORS.amber : COLORS.teal;
+      const yBase = this.mapData.heightAt ? this.mapData.heightAt(light.x, light.z) : 0;
       const pole = cylinder(0.04, 0.05, 2.2, 6, COLORS.metal);
-      pole.position.set(x, 1.02, z);
+      pole.position.set(light.x, 1.02 + yBase, light.z);
       this.group.add(pole);
       const lamp = sphere(0.1, 6, color, {
         material: new THREE.MeshBasicMaterial({ color, toneMapped: false }),
         castShadow: false,
       });
-      lamp.position.set(x, 2.15, z);
+      lamp.position.set(light.x, 2.15 + yBase, light.z);
       this.group.add(lamp);
     }
   }
@@ -455,6 +423,6 @@ export class ExteriorBuilder {
   }
 }
 
-export function buildExterior() {
-  return new ExteriorBuilder().build();
+export function buildExterior(mapData = null) {
+  return new ExteriorBuilder(mapData).build();
 }

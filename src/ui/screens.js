@@ -13,11 +13,22 @@ export class TitleScreen {
     this.host = host;
     this.callbacks = callbacks;
     this.node = null;
+    this.mapInfo = null;
+  }
+
+  setMapInfo(mapData) {
+    this.mapInfo = mapData;
+    if (!this.node || !mapData) return;
+    const input = this.node.querySelector('#title-seed-input');
+    const biome = this.node.querySelector('#title-biome-name');
+    if (input) input.value = String(mapData.seed);
+    if (biome) biome.textContent = mapData.biome?.name ?? 'Artemis Highlands';
   }
 
   show() {
     if (this.node) {
       this.node.classList.remove('hidden');
+      if (this.mapInfo) this.setMapInfo(this.mapInfo);
       return this.node;
     }
     this.node = document.createElement('div');
@@ -42,6 +53,13 @@ export class TitleScreen {
               <strong>SHACKLETON CRATER</strong>
               <span>Permanent shadow · deep ice ops</span>
             </button>
+          </div>
+
+          <div class="seed-bar">
+            <label class="seed-label" for="title-seed-input">SECTOR SEED</label>
+            <input id="title-seed-input" class="seed-input" type="text" maxlength="20" value="${this.mapInfo?.seed ?? ''}" aria-label="Map seed" />
+            <span class="seed-biome" id="title-biome-name">${escapeHtml(this.mapInfo?.biome?.name ?? 'Artemis Highlands')}</span>
+            <button class="seed-btn" type="button" data-action="random-seed" title="Generate new procedural terrain">↻ NEW MAP</button>
           </div>
 
           <div class="title-actions">
@@ -84,7 +102,18 @@ export class TitleScreen {
       </div>
     `;
     this.host.append(this.node);
-    this.node.querySelector('[data-action="start"]').addEventListener('click', () => this.callbacks.onStart?.());
+    this.node.querySelector('[data-action="start"]').addEventListener('click', () => {
+      const seedVal = this.node.querySelector('#title-seed-input')?.value?.trim();
+      this.callbacks.onStart?.(seedVal || undefined);
+    });
+    const seedInput = this.node.querySelector('#title-seed-input');
+    seedInput?.addEventListener('change', () => {
+      const val = seedInput.value.trim();
+      if (val) this.callbacks.onSeedChange?.(val);
+    });
+    this.node.querySelector('[data-action="random-seed"]')?.addEventListener('click', () => {
+      this.callbacks.onRandomSeed?.();
+    });
     this.node.querySelector('[data-action="demo-mid"]').addEventListener('click', () => this.callbacks.onDemo?.('demo_mid'));
     this.node.querySelector('[data-action="demo-final"]').addEventListener('click', () => this.callbacks.onDemo?.('demo_final'));
     this.node.querySelector('[data-action="sources"]').addEventListener('click', () => this.callbacks.onSources?.());
