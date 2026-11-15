@@ -55,6 +55,7 @@ export class Astronaut {
       this.legR = this.group.getObjectByName('LegR');
       this.chestLight = this.group.getObjectByName('ChestLight');
       this.antennaLight = this.group.getObjectByName('AntennaLight');
+      this._attachPickaxe(this.armR);
       addContactShadow(this.group);
       this.group.position.set(0, 0, 2.5);
       return;
@@ -171,18 +172,7 @@ export class Astronaut {
     this.armL = makeArm(-1);
     this.armR = makeArm(1);
 
-    // Lunar pickaxe held in right hand when slot 1 is equipped.
-    const pickaxe = new THREE.Group();
-    const shaft = cylinder(0.025, 0.028, 0.72, 6, COLORS.amber);
-    shaft.rotation.x = Math.PI / 2;
-    shaft.position.set(0, -0.71, 0.24);
-    pickaxe.add(shaft);
-    const head = box(0.36, 0.06, 0.08, COLORS.teal);
-    head.position.set(0, -0.71, 0.54);
-    pickaxe.add(head);
-    pickaxe.visible = true;
-    this.armR.add(pickaxe);
-    this.pickaxe = pickaxe;
+    this._attachPickaxe(this.armR);
 
     // Legs.
     const makeLeg = (side) => {
@@ -211,6 +201,26 @@ export class Astronaut {
     addContactShadow(this.group);
 
     this.group.position.set(0, 0, 2.5);
+  }
+
+  /**
+   * Lunar pickaxe held in the right hand. Both rigs (authored GLB and
+   * procedural fallback) put the shoulder pivot at the top of the arm with the
+   * hand ~0.71 below it, so the same offsets work for either.
+   */
+  _attachPickaxe(arm) {
+    if (!arm) return;
+    const pickaxe = new THREE.Group();
+    const shaft = cylinder(0.025, 0.028, 0.72, 6, COLORS.amber);
+    shaft.rotation.x = Math.PI / 2;
+    shaft.position.set(0, -0.71, 0.24);
+    pickaxe.add(shaft);
+    const head = box(0.36, 0.06, 0.08, COLORS.teal);
+    head.position.set(0, -0.71, 0.54);
+    pickaxe.add(head);
+    pickaxe.visible = true;
+    arm.add(pickaxe);
+    this.pickaxe = pickaxe;
   }
 
   setPosition(x, z) {
