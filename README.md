@@ -35,7 +35,8 @@ evaluación.
   - *Mid-mission*: un informe entregado, una muestra en la mochila, contratos
     listos y una ventana de radiación a 3 horas de juego.
   - *Final hour*: dos informes entregados, la tercera muestra lista y una
-    tormenta Kp 9 a 3 horas. Enviar el último informe gana la partida.
+    ventana de radiación final a 3 horas. Enviar el último informe gana la
+    partida.
 
 ## Arranque rápido
 
