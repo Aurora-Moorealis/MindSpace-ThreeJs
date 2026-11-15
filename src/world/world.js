@@ -130,6 +130,7 @@ export class World {
 
     this._buildMachines();
     this._buildStations();
+    this._buildSolarPowerCable();
     this._buildRoomSigns();
 
     this.astronaut = new Astronaut();
@@ -268,6 +269,85 @@ export class World {
       label: melterLabel,
       visual: iceMelter,
     });
+  }
+
+  _buildSolarPowerCable() {
+    const solar = MACHINES.solar_array;
+    const battery = MACHINES.battery;
+    const dist = MACHINES.power_distributor;
+    if (!solar || !battery || !dist) return;
+
+    const rot = solar.rotationY ?? 0;
+    const invLocal = rotateLocal(0, 2.9, rot);
+    const startX = solar.position[0] + invLocal.x;
+    const startZ = solar.position[2] + invLocal.z;
+    const batX = battery.position[0];
+    const batZ = battery.position[2];
+    const distX = dist.position[0];
+    const distZ = dist.position[2];
+
+    const points = [
+      new THREE.Vector3(startX, 0.34, startZ),
+      new THREE.Vector3(startX, 0.06, startZ - 1.4),
+      new THREE.Vector3(startX, 0.05, 17.6),
+      new THREE.Vector3(27.35, 0.05, 17.6),
+      new THREE.Vector3(27.35, 0.45, 15.8),
+      new THREE.Vector3(27.35, 0.45, batZ),
+      new THREE.Vector3(26.7, 0.45, batZ),
+      new THREE.Vector3(batX, 0.45, batZ),
+      new THREE.Vector3(distX, 0.45, distZ),
+    ];
+
+    const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.14);
+    const sheathMat = new THREE.MeshStandardMaterial({
+      color: 0x1e2530,
+      roughness: 0.7,
+      metalness: 0.35,
+    });
+    const sheath = new THREE.Mesh(new THREE.TubeGeometry(curve, 96, 0.075, 8, false), sheathMat);
+    sheath.receiveShadow = true;
+    this.group.add(sheath);
+
+    const conductorCurve = new THREE.CatmullRomCurve3(
+      points.map((p) => new THREE.Vector3(p.x, p.y + 0.055, p.z)),
+      false,
+      'catmullrom',
+      0.14
+    );
+    this.solarCableMat = new THREE.MeshStandardMaterial({
+      color: COLORS.amber,
+      emissive: COLORS.amber,
+      emissiveIntensity: 0.75,
+      roughness: 0.35,
+      metalness: 0.4,
+    });
+    const conductor = new THREE.Mesh(new THREE.TubeGeometry(conductorCurve, 96, 0.032, 6, false), this.solarCableMat);
+    this.group.add(conductor);
+
+    // Cable clamps on the exterior apron and east wall conduit + wall feed-through junction box.
+    const clampMat = new THREE.MeshStandardMaterial({ color: 0x3b4656, roughness: 0.55, metalness: 0.45 });
+    for (const [cx, cy, cz, w, h, d] of [
+      [startX, 0.06, 21.2, 0.36, 0.14, 0.24],
+      [startX, 0.06, 18.2, 0.36, 0.14, 0.24],
+      [21.5, 0.06, 17.6, 0.24, 0.14, 0.36],
+      [27.35, 0.45, 8.0, 0.22, 0.24, 0.28],
+      [27.35, 0.45, 0.0, 0.22, 0.24, 0.28],
+      [27.35, 0.45, -7.5, 0.22, 0.24, 0.28],
+    ]) {
+      const clamp = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), clampMat);
+      clamp.position.set(cx, cy, cz);
+      this.group.add(clamp);
+    }
+
+    const junctionBox = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 0.55), clampMat);
+    junctionBox.position.set(27.0, 0.48, batZ);
+    this.group.add(junctionBox);
+    const junctionLed = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.12, 0.16),
+      this.solarCableMat
+    );
+    junctionLed.position.set(27.0, 0.72, batZ);
+    this.group.add(junctionLed);
   }
 
   _buildPois() {
@@ -733,6 +813,20 @@ export class World {
     for (const visual of this.machineVisuals.values()) visual.update?.(dt, sim);
     this.holo?.update?.(dt);
     this.iceMelter?.update?.(dt, sim);
+    if (this.solarCableMat) {
+      const solarView = sim.machineView('solar_array');
+      const broken = !solarView || solarView.condition <= 0 || !solarView.enabled;
+      const pulse = 0.5 + 0.5 * Math.sin(now * 0.004);
+      if (broken) {
+        this.solarCableMat.color.setHex(COLORS.red);
+        this.solarCableMat.emissive.setHex(COLORS.red);
+        this.solarCableMat.emissiveIntensity = 0.35 + pulse * 0.65;
+      } else {
+        this.solarCableMat.color.setHex(COLORS.amber);
+        this.solarCableMat.emissive.setHex(COLORS.amber);
+        this.solarCableMat.emissiveIntensity = sim.isDay ? 0.55 + pulse * 0.55 : 0.18;
+      }
+    }
 
     // POI scan progress and flags.
     for (const poi of this.pois) {
