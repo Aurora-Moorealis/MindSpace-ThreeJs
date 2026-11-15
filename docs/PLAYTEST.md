@@ -9,7 +9,7 @@ npm run check
 Ejecuta:
 
 1. `npm run audit` — valida datos, fuentes y presets.
-2. `npm test` — 34 tests de simulación, economía, radiación, contratos,
+2. `npm test` — 51 tests de simulación, economía, radiación, contratos,
    presets y evaluación.
 3. `npm run build` — build de Vite.
 
@@ -95,6 +95,31 @@ con `sim.tick()` y espera de más en las transiciones.
 - [x] "Run it again" reinicia sin intro/tutorial.
 - [x] Los presets mid/final cargan y validan sus invariantes.
 
+### Guardado, sprint y marcadores
+
+- [x] Autoguardado: jugar dos ticks, recargar y comprobar que el título ofrece
+      `CONTINUE MISSION` con el tick y la posición restaurados.
+- [ ] Pausa y cierre: pausar u ocultar la pestaña escribe la fracción de hora
+      en curso.
+- [x] Victoria: enviar el tercer informe deja la tarjeta en `MISSION COMPLETE`;
+      `CONTINUE FREEPLAY` entra en freeplay desde la instantánea de victoria.
+- [x] Derrota: morir en una misión en curso borra el guardado y el título ya no
+      ofrece continuar.
+- [x] Nueva misión con guardado: pide confirmación; cancelar lo conserva y
+      confirmar lo elimina.
+- [ ] Preset de demo: cargarlo no modifica el guardado de la misión real.
+- [x] Guardado corrupto: escribir basura en `outpost-lunar.save.v1` muestra
+      `SAVE UNREADABLE`, no reanuda y el juego sigue arrancando.
+- [x] Sprint: `Shift` + dirección recorre más distancia que caminar, soltarlo
+      vuelve a la velocidad normal y una pared detiene el sprint.
+- [x] Escaneo con Shift: mantener Shift sin dirección no cancela el escaneo;
+      Shift + dirección sí lo cancela.
+- [x] Marcadores: inicio (`NEXT SURVEY` en A, `UNSCANNED` en B/C), tras escanear
+      A (`SAMPLE READY` y consola actual), tras el informe (`REPORT SENT` y B
+      actual) y tras el tercer informe (ningún objetivo actual).
+- [x] Cargar un guardado con A escaneado deja los marcadores y el HUD apuntando
+      a la consola en el mismo instante.
+
 ### UI
 
 - [x] El HUD se lee a 1600×900 y se adapta a 1280×720.
@@ -113,7 +138,9 @@ con `sim.tick()` y espera de más en las transiciones.
 
 - **Rendimiento en software rendering**: SwiftShader es muy lento; no es
   representativo de una GPU. En un portátil normal la escena es ligera.
-- **Sin guardado**: recargar reinicia. Es una decisión del diseño.
+- **Guardado local**: el progreso se guarda en el navegador; dos pestañas
+  abiertas comparten la misma clave y la última escritura gana. Está pensado
+  para una sola pestaña.
 - **Web-only**: para Windows hace falta empaquetar la build web.
 - **Fuentes en canvas**: los labels 3D se generan cuando las fuentes ya están
   cargadas; en una conexión muy lenta podría verse el fallback durante un frame.
@@ -125,6 +152,6 @@ con `sim.tick()` y espera de más en las transiciones.
 - Fecha: 2026-11-15.
 - Navegador: Chromium 1248 headless (SwiftShader) en Linux.
 - Build: Vite 6.4.6, Three.js r170.
-- Resultado: flujo completo sin errores de página; 34 tests en verde; audit en
+- Resultado: flujo completo sin errores de página; 51 tests en verde; audit en
   verde; capturas en `docs/screenshots/`.
 - FPS de software rendering: bajo; no se usa como criterio de rendimiento.

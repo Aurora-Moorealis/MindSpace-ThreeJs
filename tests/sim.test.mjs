@@ -35,7 +35,55 @@ test('simulation is deterministic for identical action sequences', () => {
       sim.drainNotifications();
     }
   }
-  assert.deepEqual(a.snapshot(), b.snapshot());
+  assert.deepEqual(a.stateSnapshot(), b.stateSnapshot());
+});
+
+test('run snapshot round-trips state, ledger and presence', () => {
+  const sim = new GameSim();
+  sim.setPresence({ outside: true, inShelter: false });
+  for (let i = 0; i < 12; i += 1) {
+    sim.tick();
+    sim.drainNotifications();
+  }
+  sim.state.scans = ['site_a'];
+  sim.state.samples = ['site_a'];
+
+  const snapshot = sim.snapshot();
+  const restored = new GameSim();
+  assert.equal(restored.restore(snapshot), true);
+  assert.deepEqual(restored.stateSnapshot(), sim.stateSnapshot());
+  assert.deepEqual(restored.log.serialize(), sim.log.serialize());
+  assert.deepEqual(restored.presence, sim.presence);
+});
+
+test('restoring a snapshot continues the same deterministic run', () => {
+  const base = new GameSim();
+  base.setPresence({ outside: false, inShelter: false });
+  for (let i = 0; i < 20; i += 1) {
+    base.tick();
+    base.drainNotifications();
+  }
+  const snapshot = base.snapshot();
+  for (let i = 0; i < 15; i += 1) {
+    base.tick();
+    base.drainNotifications();
+  }
+  const expected = base.stateSnapshot();
+
+  const restored = new GameSim();
+  assert.equal(restored.restore(snapshot), true);
+  for (let i = 0; i < 15; i += 1) {
+    restored.tick();
+    restored.drainNotifications();
+  }
+  assert.deepEqual(restored.stateSnapshot(), expected);
+});
+
+test('restore rejects snapshots with removed content ids', () => {
+  const sim = new GameSim();
+  const snapshot = sim.snapshot();
+  snapshot.state.scans.push('missing_site');
+  assert.equal(new GameSim().restore(snapshot), false);
 });
 
 test('resources never exceed capacity and never go negative', () => {

@@ -77,6 +77,43 @@ consecuencias`. Aquí los eventos se disparan **antes** de producción para que 
 tormenta o la avería se noten en la misma hora en que empieza la fila. El resto
 del pipeline mantiene el orden. Se documenta como desviación consciente.
 
+## Guardado local
+
+El guardado vive en una única clave de `localStorage`, `outpost-lunar.save.v1`,
+con este sobre:
+
+```json
+{
+  "version": 1,
+  "missions": {
+    "artemis_ridge": {
+      "version": 1,
+      "missionId": "artemis_ridge",
+      "status": "in_progress",
+      "savedAt": "2026-11-15T12:00:00.000Z",
+      "tick": 42,
+      "speed": 1,
+      "tickAccum": 0.35,
+      "player": { "x": 0, "z": 2.5, "facing": 0 },
+      "sim": { "state": {}, "log": [], "presence": {} }
+    }
+  }
+}
+```
+
+- `status` es `in_progress` o `victory`. Una derrota no se escribe: borra el
+  registro en curso.
+- `src/core/save-game.js` valida versión, misión, estado, tick, velocidad,
+  posición y la forma del snapshot. `GameSim.restore()` vuelve a comprobar que
+  los ids de máquinas, POIs, muestras e informes existan en los datos actuales.
+- Si el archivo no parsea o no valida, se copia a
+  `outpost-lunar.save.v1.broken` (mejor esfuerzo) y se elimina la clave
+  principal; el título avisa y no se reanuda nada.
+- Se autoguarda en cada tick, al pausar, al ocultar/cerrar la pestaña y antes de
+  volver al título. Ganar conserva el registro marcado como `victory`; perder
+  borra el registro en curso. Una derrota en freeplay no borra una misión ya
+  ganada.
+
 ## Recursos y cifras
 
 - Las tasas base vienen de BVAD/ECLSS, pero se normalizan a 0-100 para que una
@@ -131,8 +168,10 @@ etiquetan como tal en el banner y en el panel de fuentes.
 5. **Energía con batería como máquina.** El diseño menciona batería y cable en
    el cambio `energy-grid`; aquí la batería define la capacidad usable y el
    distribuidor gestiona toggles y escalera. El cable es visual (conductos).
-6. **Sin guardado.** Igual que el diseño. Los presets son constructores
-   explícitos, no save files.
+6. **Guardado local por misión.** El diseño original no tenía persistencia;
+   esta adaptación añade un guardado reanudable en `localStorage` porque una
+   partida dura hasta ~5 horas reales. Los presets de demo siguen siendo
+   constructores explícitos y no escriben ni borran el guardado.
 7. **Web-only.** El diseño pide Windows + HTML5. La build es HTML5 estática; se
    puede envolver en Electron/Tauri para Windows sin cambiar el juego.
 8. **Audio sintetizado.** El diseño congela 5 SFX; aquí se generan con WebAudio
@@ -160,7 +199,6 @@ etiquetan como tal en el banner y en el panel de fuentes.
 - Otras misiones/planetas (Marte con polvo y latencia).
 - Multijugador y varios astronautas.
 - Construcción/movimiento de edificios.
-- Save/persistencia.
 - Más arte 3D o modelos importados (GLTF) en lugar de primitivas.
 - Empaquetado Electron/Tauri para Windows.
 - Traducción de la UI (hoy inglés, como pide la convención del proyecto
