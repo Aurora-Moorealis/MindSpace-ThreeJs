@@ -268,13 +268,29 @@ Se etiquetan como `SIMULATED` en el juego y aparecen como
   una cosecha rinde 10 de comida.
 - **Energía**: kW/kWh normalizados con la referencia ISS OGS; la capacidad de la
   batería y el reparto son tuning.
-- **Tiempo**: 1 tick = 1 hora de juego = 60 s reales a ×1. La misión dura 300
-  horas (12,5 días de misión). Un día lunar real dura 29,53 días terrestres; el
-  ciclo del juego está comprimido y la interfaz lo llama **MISSION DAY**. Los
-  eventos están comprimidos para que una sesión de 20-60 minutos vea el arco
-  completo.
+- **Tiempo**: el ciclo lunar está comprimido y la interfaz llama **MISSION DAY**
+  a cada día de misión. La tabla «en el juego / en la realidad / por qué» y la
+  nota para el jurado están en [Tiempo: de 29,53 días a 300 horas de
+  juego](#tiempo-de-2953-días-a-300-horas-de-juego).
 - **NASA no avala este juego.** Los datos se citan; los errores de adaptación
   son nuestros.
+
+### Tiempo: de 29,53 días a 300 horas de juego
+
+| En el juego | En la realidad | Por qué |
+| --- | --- | --- |
+| 1 tick = 1 hora de juego = 60 s reales a ×1 | Un día lunar dura 29,53 días terrestres | Que una hora de decisiones se vea en un minuto |
+| Día de misión de 24 horas de juego (12/12) | ~14 días de luz y ~14 de noche | Que el niño vea el ciclo completo sin esperar semanas |
+| Misión de 300 horas de juego (12,5 días) | Una misión lunar real se planifica por semanas | Que el arco completo quepa en una sesión de 20–60 min |
+
+**Para el jurado.** La compresión es intencionada y está pensada para niños de 7
+a 12 años: con un día de 12 horas de luz y 12 de noche ven un día completo,
+entienden la causa-efecto entre lo que hacen y lo que cambia en la base, y pueden
+terminar la misión en una sola sesión. No es una medida, ni una predicción, ni un
+calendario operativo: el reloj es tiempo de juego, no tiempo lunar. Las demás
+compresiones (dosis, cultivo y pases de relay) tienen su propia nota en
+[Modelos con unidad real y sus simplificaciones](#modelos-con-unidad-real-y-sus-simplificaciones)
+y no se duplican aquí.
 
 ## Cómo añadir una fuente
 

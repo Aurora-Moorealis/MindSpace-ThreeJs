@@ -189,6 +189,25 @@ hasta verificarlos en la build final.
       y **Simulated**, sin listar recursos no usados.
       Ver [`DATA-SOURCES.md#recursos-oficiales-del-challenge-y-fuentes-externas`](DATA-SOURCES.md#recursos-oficiales-del-challenge-y-fuentes-externas).
 
+### Tiempo de juego y jurado
+
+- [ ] Título: la meta muestra `GAME TIME (1 TICK = 1 GAME HOUR)` y la cifra
+      `300` va rotulada `GAME HOURS`; no aparecen `REAL-TIME (1s = 1m)` ni
+      `300 hours` sin aclarar.
+- [ ] HUD: la etiqueta del reloj dice `GAME TIME` y su tooltip incluye la escala
+      (1 tick = 1 hora de juego = 60 s reales a ×1), el día de 24 horas de juego
+      y la misión de 300 horas de juego.
+- [ ] Pausa: muestra la escala y el aviso de que el reloj es tiempo de juego, no
+      tiempo lunar real.
+- [ ] Tablero de misión: las notas de escala y compresión aparecen junto al
+      reloj, antes del resumen de la misión.
+- [ ] Glosario: la nota superior muestra la escala y la entrada `Lunar day`
+      distingue el día lunar real (29,53 días terrestres) del día de juego
+      (24 horas).
+- [ ] `grep -R "REAL-TIME (1s = 1m)" src README.md docs --exclude=PLAYTEST.md`
+      no devuelve nada (se excluye esta checklist, que cita el texto a
+      propósito).
+
 ## Problemas conocidos
 
 - **Rendimiento en software rendering**: SwiftShader es muy lento; no es
@@ -201,6 +220,10 @@ hasta verificarlos en la build final.
   cargadas; en una conexión muy lenta podría verse el fallback durante un frame.
 - **Evaluación sin rúbrica oficial**: la nota S/A/B/C/D es cosmética y no
   pretende replicar la rúbrica de NASA Space Apps.
+- **Desfase de teclas**: el tutorial y el README aún anuncian `1`/`2`/`3` para
+  cambiar la velocidad, pero el manejo actual usa `1`–`5` para seleccionar el
+  inventario y la velocidad se cambia con los botones del HUD. Se corrige en
+  otro cambio; no afecta al modelo temporal.
 
 ## Registro de la sesión de validación
 
