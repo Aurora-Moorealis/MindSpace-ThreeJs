@@ -48,6 +48,17 @@ test('simulated rows are labelled as such', () => {
   }
 });
 
+test('every upgrade declares a benefit and a visible trade-off', () => {
+  for (const machine of Object.values(MACHINES)) {
+    for (const upgrade of machine.upgrades) {
+      assert.ok(upgrade.effect, `${upgrade.id} has no benefit`);
+      assert.ok(upgrade.drawback, `${upgrade.id} has no drawback`);
+      assert.ok(STRINGS[upgrade.drawbackKey], `${upgrade.id} has no drawback copy`);
+      assert.notEqual(upgrade.drawback.stat, upgrade.effect.stat, `${upgrade.id} drawback cancels its benefit`);
+    }
+  }
+});
+
 test('all nine machines have two or more upgrades and source references', () => {
   const ids = Object.keys(MACHINES);
   assert.equal(ids.length, 9);

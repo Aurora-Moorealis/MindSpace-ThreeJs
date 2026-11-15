@@ -659,8 +659,9 @@ export class BaseBuilder {
     this.doorFrame(17, -2.5, 4, { label: 'POWER' });
     this.doorFrame(-24, 2.5, 4, { label: 'COMMS' });
     this.doorFrame(17, 2.5, 4, { label: 'WORKSHOP' });
-    this.doorFrame(0, 6, 4, { label: 'AIRLOCK' });
-    this.doorFrame(0, 16, 4, { label: 'EVA' });
+    // The sliding doors below carry their own signs; a frame label here would overlap them.
+    this.doorFrame(0, 6, 4);
+    this.doorFrame(0, 16, 4);
     // Airlock sliding doors.
     this.addDoor({ x: 0, z: 6, width: 4.2, label: 'AIRLOCK', panelColor: 0x6f7885 });
     this.addDoor({ x: 0, z: 16, width: 4.2, label: 'EVA HATCH', panelColor: 0x5b6470 });

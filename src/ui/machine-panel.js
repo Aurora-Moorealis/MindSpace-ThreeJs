@@ -130,7 +130,7 @@ export class MachinePanel {
             ${bar(view.condition, view.condition < 35 ? 'critical' : view.condition < 60 ? 'warning' : 'good')}
             <div class="drawer-meta-row">
               <span>Output factor ${view.conditionFactor.toFixed(2)}×</span>
-              <span>Wear ${row.conditionDecay.toFixed(2)}%/h</span>
+              <span>Wear ${sim.getWearRate(this.machineId).toFixed(2)}%/h</span>
             </div>
             ${
               job
@@ -173,6 +173,9 @@ export class MachinePanel {
                     <div class="upgrade-copy">
                       <div class="upgrade-name">${escapeHtml(STRINGS[upgrade.nameKey])}</div>
                       <div class="upgrade-desc">${escapeHtml(STRINGS[upgrade.descriptionKey])}</div>
+                      <div class="upgrade-drawback"><span>TRADE-OFF</span> ${escapeHtml(
+                        STRINGS[upgrade.drawbackKey] ?? ''
+                      )}</div>
                     </div>
                     <button class="btn btn-small ${installed ? 'btn-done' : 'btn-secondary'}" data-action="upgrade" data-upgrade="${upgrade.id}" ${
                       disabled ? 'disabled' : ''
@@ -304,6 +307,7 @@ export class MachinePanel {
         ${bar(sim.state.suit, sim.state.suit < 40 ? 'critical' : sim.state.suit < 65 ? 'warning' : 'good')}
         <div class="rate-grid">
           <div class="rate-row"><span>${icon('radiation', 14)} Dose multiplier</span><strong>${(sim.suitDoseFactor() * sim.stats.suit_shield).toFixed(2)}×</strong></div>
+          <div class="rate-row"><span>${icon('suit', 14)} Suit wear</span><strong>${(ECONOMY.suit.evaDecayPerTick * sim.stats.suit_decay).toFixed(2)}%/h EVA</strong></div>
           <div class="rate-row"><span>${icon('suit', 14)} Repair cost</span><strong>${ECONOMY.suit.repairCost} power</strong></div>
           <div class="rate-row"><span>${icon('clock', 14)} Repair time</span><strong>${Math.max(1, Math.round(ECONOMY.suit.repairTicks * sim.stats.repair_time))} h</strong></div>
         </div>

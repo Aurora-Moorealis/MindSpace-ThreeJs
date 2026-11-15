@@ -31,11 +31,60 @@ const EFFECT_STATS = [
   'suit_shield',
   'movement_speed',
   'machine_wear',
+  'solar_wear',
+  'suit_decay',
   'submission_reward',
   'forecast_depth',
   'shelter_shield',
   'shelter_base',
 ];
+
+/** +1 when a higher value is better, -1 when a lower value is better. */
+const STAT_DIRECTION = {
+  o2_output: 1,
+  water_output: 1,
+  food_output: 1,
+  solar_output: 1,
+  battery_capacity: 1,
+  movement_speed: 1,
+  submission_reward: 1,
+  forecast_depth: 1,
+  power_draw: -1,
+  water_input: -1,
+  hydro_power: -1,
+  dust_rate: -1,
+  repair_time: -1,
+  suit_shield: -1,
+  machine_wear: -1,
+  solar_wear: -1,
+  suit_decay: -1,
+  shelter_shield: -1,
+  shelter_base: -1,
+};
+
+const effectDelta = (effect) => {
+  if (typeof effect?.add === 'number') return effect.add;
+  if (typeof effect?.mult === 'number') return effect.mult - 1;
+  return 0;
+};
+
+const validateEffect = (key, effect, role, errors) => {
+  if (!EFFECT_STATS.includes(effect?.stat)) {
+    errors.push(`upgrade ${key}: unknown ${role} stat`);
+    return;
+  }
+  const { mult, add } = effect;
+  if (typeof mult !== 'number' && typeof add !== 'number') {
+    errors.push(`upgrade ${key}: ${role} has no mult/add`);
+    return;
+  }
+  if (typeof mult === 'number' && mult <= 0) errors.push(`upgrade ${key}: ${role} mult must be > 0`);
+  if (effectDelta(effect) === 0) errors.push(`upgrade ${key}: ${role} has no effect`);
+  const direction = STAT_DIRECTION[effect.stat] ?? 0;
+  const sign = Math.sign(effectDelta(effect)) * direction;
+  if (role === 'effect' && sign < 0) errors.push(`upgrade ${key}: effect makes ${effect.stat} worse`);
+  if (role === 'drawback' && sign > 0) errors.push(`upgrade ${key}: drawback makes ${effect.stat} better`);
+};
 
 export function auditData() {
   const errors = [];
@@ -49,6 +98,11 @@ export function auditData() {
     presets: DEMO_PRESETS.length,
     strings: Object.keys(STRINGS).length,
   };
+
+  // Upgrade stat metadata ----------------------------------------------------
+  for (const stat of EFFECT_STATS) {
+    if (!(stat in STAT_DIRECTION)) errors.push(`audit: no direction declared for stat ${stat}`);
+  }
 
   // Sources -----------------------------------------------------------------
   for (const [id, source] of Object.entries(SOURCES)) {
@@ -101,11 +155,13 @@ export function auditData() {
       upgradeKeys.add(key);
       if (!STRINGS[upgrade.nameKey]) errors.push(`upgrade ${key}: missing name string`);
       if (!STRINGS[upgrade.descriptionKey]) errors.push(`upgrade ${key}: missing description string`);
+      if (!STRINGS[upgrade.drawbackKey]) errors.push(`upgrade ${key}: missing drawback string`);
       if (upgrade.cost <= 0) errors.push(`upgrade ${key}: cost must be > 0`);
-      if (!EFFECT_STATS.includes(upgrade.effect?.stat)) errors.push(`upgrade ${key}: unknown effect stat`);
-      const { mult, add } = upgrade.effect ?? {};
-      if (typeof mult !== 'number' && typeof add !== 'number') errors.push(`upgrade ${key}: no mult/add`);
-      if (typeof mult === 'number' && mult <= 0) errors.push(`upgrade ${key}: mult must be > 0`);
+      validateEffect(key, upgrade.effect, 'effect', errors);
+      validateEffect(key, upgrade.drawback, 'drawback', errors);
+      if (upgrade.drawback?.stat === upgrade.effect?.stat) {
+        errors.push(`upgrade ${key}: drawback must target a different stat`);
+      }
     }
     for (const [res] of Object.entries(row.inputs ?? {})) {
       if (!RESOURCE_IDS.includes(res)) errors.push(`machine ${id}: unknown input ${res}`);

@@ -109,6 +109,34 @@ test('battery upgrade increases usable capacity', () => {
   assert.ok(sim.energyCapacity >= before + 40);
 });
 
+test('upgrades apply both their benefit and their drawback', () => {
+  const sim = new GameSim();
+  sim.state.machines.o2_system.upgrades.push('o2_efficiency');
+  sim.recomputeStats();
+  assert.equal(sim.stats.o2_output, 1.25);
+  assert.equal(sim.stats.water_input, 1.15);
+});
+
+test('suit servo trades suit wear for movement speed', () => {
+  const sim = new GameSim();
+  sim.state.machines.repair_bench.upgrades.push('suit_servo');
+  sim.recomputeStats();
+  assert.equal(sim.stats.movement_speed, 1.15);
+  assert.equal(sim.stats.suit_decay, 1.2);
+  sim.setPresence({ outside: true, inShelter: false });
+  sim.tick();
+  assert.ok(Math.abs(sim.state.suit - (100 - ECONOMY.suit.evaDecayPerTick * 1.2)) < 1e-9);
+});
+
+test('solar tracking increases output and array wear', () => {
+  const sim = new GameSim();
+  const before = sim.getWearRate('solar_array');
+  sim.state.machines.solar_array.upgrades.push('solar_tracking');
+  sim.recomputeStats();
+  assert.equal(sim.stats.solar_output, 1.2);
+  assert.ok(sim.getWearRate('solar_array') > before);
+});
+
 test('three scans and three reports complete the mission', () => {
   const sim = new GameSim();
   sim.setPresence({ outside: true, inShelter: false });

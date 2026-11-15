@@ -40,6 +40,8 @@ const DEFAULT_STATS = () => ({
   suit_shield: 1,
   movement_speed: 1,
   machine_wear: 1,
+  solar_wear: 1,
+  suit_decay: 1,
   submission_reward: 1,
   forecast_depth: 0,
   shelter_shield: 1,
@@ -261,6 +263,14 @@ export class GameSim {
     return this.economy.condition.outputFloor + (1 - this.economy.condition.outputFloor) * (machine.condition / 100);
   }
 
+  /** Effective condition loss per game hour, including upgrade wear modifiers. */
+  getWearRate(machineId) {
+    const row = this.machinesData[machineId];
+    if (!row) return 0;
+    const solarWear = machineId === 'solar_array' ? this.stats.solar_wear : 1;
+    return (row.conditionDecay ?? 0) * this.stats.machine_wear * solarWear;
+  }
+
   machinePower(machineId) {
     const row = this.machinesData[machineId];
     if (!row) return 0;
@@ -404,7 +414,7 @@ export class GameSim {
     if (!storm) this.state.shelterCountedStorm = null;
 
     if (this.presence.outside) {
-      this.state.suit = clamp(this.state.suit - this.economy.suit.evaDecayPerTick, 0, 100);
+      this.state.suit = clamp(this.state.suit - this.economy.suit.evaDecayPerTick * this.stats.suit_decay, 0, 100);
     }
 
     const radFlags = this.state.flags;
@@ -433,7 +443,7 @@ export class GameSim {
       const row = this.machinesData[id];
       if (!row || machine.condition <= 0) continue;
       if (machine.job) continue;
-      const decay = (row.conditionDecay ?? 0) * this.stats.machine_wear;
+      const decay = this.getWearRate(id);
       if (decay <= 0) continue;
       // Switched-off production machines wear more slowly.
       const activity = row.kind === 'production' && !machine.enabled ? 0.35 : 1;
@@ -922,7 +932,7 @@ export class GameSim {
     const dose = this.economy.radiation.cleanPanelDose * this.suitDoseFactor() * this.stats.suit_shield;
     s.radiation = clamp(s.radiation + dose, 0, 100);
     s.stats.peakDose = Math.max(s.stats.peakDose, s.radiation);
-    s.suit = clamp(s.suit - this.economy.suit.actionDecay, 0, 100);
+    s.suit = clamp(s.suit - this.economy.suit.actionDecay * this.stats.suit_decay, 0, 100);
     this.log.add(s.tick, LOG_TYPES.NOTE, {
       note: 'solar_cleaned',
       dose: Number(dose.toFixed(2)),
@@ -943,7 +953,7 @@ export class GameSim {
     this.state.stats.scans += 1;
     this.state.radiation = clamp(this.state.radiation + dose, 0, 100);
     this.state.stats.peakDose = Math.max(this.state.stats.peakDose, this.state.radiation);
-    this.state.suit = clamp(this.state.suit - this.economy.suit.actionDecay, 0, 100);
+    this.state.suit = clamp(this.state.suit - this.economy.suit.actionDecay * this.stats.suit_decay, 0, 100);
     this.log.add(this.state.tick, LOG_TYPES.SCAN, { poiId, source: poi.source, dose: Number(dose.toFixed(2)) });
     this._notify('scan_complete', { poiId }, 'good');
     this._updateSubmissions();
@@ -1029,16 +1039,21 @@ export class GameSim {
 
   recomputeStats() {
     const stats = DEFAULT_STATS();
+    const apply = (effect) => {
+      if (!effect) return;
+      const { stat, mult, add } = effect;
+      if (!(stat in stats)) return;
+      if (typeof add === 'number') stats[stat] += add;
+      if (typeof mult === 'number') stats[stat] *= mult;
+    };
     for (const [machineId, machine] of Object.entries(this.state.machines)) {
       const row = this.machinesData[machineId];
       if (!row) continue;
       for (const upgradeId of machine.upgrades) {
         const upgrade = row.upgrades.find((u) => u.id === upgradeId);
         if (!upgrade) continue;
-        const { stat, mult, add } = upgrade.effect;
-        if (!(stat in stats)) continue;
-        if (typeof add === 'number') stats[stat] += add;
-        if (typeof mult === 'number') stats[stat] *= mult;
+        apply(upgrade.effect);
+        apply(upgrade.drawback);
       }
     }
     this.stats = stats;

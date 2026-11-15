@@ -125,7 +125,9 @@ pero **nunca el envío de informes**.
 O₂ System · Water Recycler · Hydroponics · Solar Array · Battery Bank · Power
 Distributor · Repair Bench · Comms Console · Storm Shelter. Cada una tiene dos
 mejoras (el banco de reparación tiene tres), coste en energía y tiempo de
-instalación. El panel muestra los números y su procedencia.
+instalación. Toda mejora declara en el panel su beneficio y su contrapartida
+(por ejemplo, más O₂ a cambio de más agua): nunca es una decisión gratis. El
+panel muestra los números y su procedencia.
 
 ## Datos NASA y honestidad
 
