@@ -140,6 +140,21 @@ export class HUD {
           <div class="scan-track"><div class="scan-fill" id="hud-scan-fill"></div></div>
           <div class="scan-hint">Stay still. Moving cancels the scan.</div>
         </div>
+        <div class="inventory-wrap" id="hud-inventory-wrap">
+          <div class="inv-caption" id="hud-inv-caption">1 · EVA SCANNER</div>
+          <div class="inventory-bar" id="hud-inventory" role="toolbar" aria-label="Inventory slots">
+            ${[0, 1, 2, 3, 4]
+              .map(
+                (i) => `
+              <button class="inv-slot${i === 0 ? ' active' : ''}" type="button" data-slot="${i}" title="Slot ${i + 1}">
+                <span class="inv-key">${i + 1}</span>
+                <span class="inv-icon" data-inv-icon></span>
+                <span class="inv-label" data-inv-label>EMPTY</span>
+              </button>`
+              )
+              .join('')}
+          </div>
+        </div>
       </div>
 
       <div class="storm-strip hidden" id="hud-storm">
@@ -232,6 +247,12 @@ export class HUD {
       scanLabel: this.root.querySelector('#hud-scan-label'),
       scanPct: this.root.querySelector('#hud-scan-pct'),
       scanFill: this.root.querySelector('#hud-scan-fill'),
+      invCaption: this.root.querySelector('#hud-inv-caption'),
+      invSlots: Array.from(this.root.querySelectorAll('.inv-slot')).map((node) => ({
+        node,
+        icon: node.querySelector('[data-inv-icon]'),
+        label: node.querySelector('[data-inv-label]'),
+      })),
       storm: this.root.querySelector('#hud-storm'),
       stormTitle: this.root.querySelector('#hud-storm-title'),
       stormDetail: this.root.querySelector('#hud-storm-detail'),
@@ -242,6 +263,9 @@ export class HUD {
 
     this.refs.speedBtns.forEach((button) => {
       button.addEventListener('click', () => this.callbacks.onSpeed?.(Number(button.dataset.speed)));
+    });
+    this.refs.invSlots.forEach((slot, index) => {
+      slot.node.addEventListener('click', () => this.callbacks.onSlot?.(index));
     });
     this.root.querySelector('[data-action="pause"]').addEventListener('click', () => this.callbacks.onPause?.());
     this.root.querySelector('[data-action="menu"]').addEventListener('click', () => this.callbacks.onMenu?.());
@@ -261,6 +285,19 @@ export class HUD {
 
   show(visible) {
     this.root.classList.toggle('hidden', !visible);
+  }
+
+  setSelectedSlot(index) {
+    this.selectedSlot = index;
+    this.refs.invSlots.forEach((slot, i) => {
+      slot.node.classList.toggle('active', i === index);
+    });
+    const item = this._lastInvItems?.[index];
+    if (item) {
+      this.refs.invCaption.textContent = `${index + 1} · ${item.caption}`;
+    } else {
+      this.refs.invCaption.textContent = `${index + 1} · EMPTY SLOT`;
+    }
   }
 
   updateScan(scan) {
@@ -479,6 +516,49 @@ export class HUD {
       } else {
         this.refs.prompt.classList.add('hidden');
       }
+    }
+
+    // Inventory bar (5 slots).
+    const selectedSlot = ctx.selectedSlot ?? this.selectedSlot ?? 0;
+    const samples = state.samples ?? [];
+    const invSignature = `${selectedSlot}|${samples.join(',')}`;
+    if (invSignature !== this.inventorySignature) {
+      this.inventorySignature = invSignature;
+      const items = [
+        { icon: 'scan', label: 'SCANNER', caption: 'EVA SCANNER · Survey POIs', filled: true },
+        null,
+        null,
+        null,
+        null,
+      ];
+      samples.slice(0, 4).forEach((poiId, idx) => {
+        const code = poiId.replace('poi_', '').toUpperCase();
+        items[idx + 1] = {
+          icon: 'sample',
+          label: `SITE ${code}`,
+          caption: `SAMPLE ${code} · Deliver to Comms Console`,
+          filled: true,
+          sample: true,
+        };
+      });
+      this._lastInvItems = items;
+      this.refs.invSlots.forEach((slot, i) => {
+        const item = items[i];
+        slot.node.classList.toggle('active', i === selectedSlot);
+        slot.node.classList.toggle('filled', Boolean(item));
+        slot.node.classList.toggle('sample', Boolean(item?.sample));
+        if (item) {
+          slot.icon.innerHTML = svgIcon(item.icon, 20);
+          slot.label.textContent = item.label;
+        } else {
+          slot.icon.innerHTML = '';
+          slot.label.textContent = 'EMPTY';
+        }
+      });
+      const activeItem = items[selectedSlot];
+      this.refs.invCaption.textContent = activeItem
+        ? `${selectedSlot + 1} · ${activeItem.caption}`
+        : `${selectedSlot + 1} · EMPTY SLOT`;
     }
 
     // Scan/task progress.

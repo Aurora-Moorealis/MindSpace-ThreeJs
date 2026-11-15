@@ -67,6 +67,7 @@ const app = {
   uiTimer: 0,
   panelTimer: 0,
   debugVisible: false,
+  selectedSlot: 0,
 };
 
 let stage;
@@ -205,6 +206,7 @@ function setupUI(screenLayer, drawerLayer) {
     onMenu: () => openPauseMenu(false),
     onSound: toggleMute,
     onSource: openSources,
+    onSlot: selectInventorySlot,
   });
 
   notifications = new NotificationCenter({
@@ -423,9 +425,16 @@ function setupInput() {
       }
       return;
     }
-    if (['Digit1', 'Digit2', 'Digit3'].includes(event.code) && app.phase === 'game') {
+    if (
+      ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5'].includes(
+        event.code
+      ) &&
+      app.phase === 'game' &&
+      !app.panel &&
+      !hasBlockingModal()
+    ) {
       event.preventDefault();
-      setSpeed(Number(event.code.slice(-1)) === 1 ? 1 : Number(event.code.slice(-1)) === 2 ? 5 : 10);
+      selectInventorySlot(Number(event.code.slice(-1)) - 1);
       return;
     }
     if (event.code === 'Enter' || event.code === 'Space') {
@@ -470,7 +479,12 @@ function setupInput() {
     'wheel',
     (event) => {
       if (app.phase === 'game' && !app.paused && !app.panel && !hasBlockingModal()) {
-        stage?.adjustZoom(event.deltaY > 0 ? 2 : -2);
+        if (event.shiftKey) {
+          stage?.adjustZoom(event.deltaY > 0 ? 2 : -2);
+        } else if (event.deltaY !== 0) {
+          const step = event.deltaY > 0 ? 1 : 4;
+          selectInventorySlot((app.selectedSlot + step) % 5);
+        }
       }
     },
     { passive: true }
@@ -498,6 +512,14 @@ function hasBlockingModal() {
       evaluationScreen?.isOpen() ||
       app.transitioning
   );
+}
+
+function selectInventorySlot(index) {
+  const clamped = ((index % 5) + 5) % 5;
+  if (clamped === app.selectedSlot) return;
+  app.selectedSlot = clamped;
+  hud?.setSelectedSlot(clamped);
+  audio?.play('click');
 }
 
 function setSpeed(value) {
@@ -1117,6 +1139,7 @@ function refreshHud(cachedNearest = undefined) {
       : null,
     demo: app.demo,
     objective: app.objective,
+    selectedSlot: app.selectedSlot,
   });
 }
 
