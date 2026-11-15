@@ -29,6 +29,7 @@ import { MachinePanel } from './ui/machine-panel.js';
 import { CommsPanel } from './ui/comms-panel.js';
 import { PauseMenu, ControlsModal, MissionBoardPanel } from './ui/menus.js';
 import { SourcesModal } from './ui/sources-view.js';
+import { GlossaryModal } from './ui/glossary.js';
 import { TitleScreen, IntroScreen, EvaluationScreen } from './ui/screens.js';
 import { DialogueBox } from './ui/dialogue.js';
 import { DebugOverlay } from './ui/debug.js';
@@ -110,6 +111,7 @@ let missionBoard;
 let pauseMenu;
 let controlsModal;
 let sourcesModal;
+let glossary;
 let titleScreen;
 let introScreen;
 let evaluationScreen;
@@ -220,6 +222,8 @@ async function boot() {
       beginGameplay,
       openComms,
       openMachinePanel,
+      openGlossary,
+      glossary,
       sourcesModal,
       audio,
     };
@@ -243,6 +247,7 @@ function setupUI(screenLayer, drawerLayer) {
     onMenu: () => openPauseMenu(false),
     onSound: toggleMute,
     onSource: openSources,
+    onGlossary: openGlossary,
     onSlot: selectInventorySlot,
   });
 
@@ -254,6 +259,7 @@ function setupUI(screenLayer, drawerLayer) {
 
   sourcesModal = new SourcesModal(overlayLayer);
   controlsModal = new ControlsModal(overlayLayer);
+  glossary = new GlossaryModal(overlayLayer);
 
   machinePanel = new MachinePanel(drawerLayer, {
     onClose: () => {
@@ -317,12 +323,29 @@ function setupUI(screenLayer, drawerLayer) {
       refreshHud();
       audio.play('click');
     },
+    onPlant: (index) => {
+      const result = sim.plantTray(index);
+      if (!result.ok) actionError(result);
+      flushNotifications();
+      machinePanel.refresh(sim);
+      refreshHud();
+      audio.play('click');
+    },
+    onHarvest: (index) => {
+      const result = sim.harvestTray(index);
+      if (!result.ok) actionError(result);
+      flushNotifications();
+      machinePanel.refresh(sim);
+      refreshHud();
+      audio.play('repair');
+    },
     onOpenComms: () => {
       machinePanel.close();
       openComms();
     },
     onSource: openSources,
     onSources: () => openSources(),
+    onGlossary: openGlossary,
   });
 
   commsPanel = new CommsPanel(overlayLayer, {
@@ -338,7 +361,6 @@ function setupUI(screenLayer, drawerLayer) {
       refreshHud();
       updateObjective(true);
       audio.play('report');
-      if (sim.state.over) triggerEnding();
     },
     onClaim: (submissionId) => {
       const result = sim.claimSubmission(submissionId);
@@ -357,6 +379,7 @@ function setupUI(screenLayer, drawerLayer) {
       audio.play('click');
     },
     onSource: openSources,
+    onGlossary: openGlossary,
   });
 
   missionBoard = new MissionBoardPanel(drawerLayer, {
@@ -380,6 +403,7 @@ function setupUI(screenLayer, drawerLayer) {
     },
     onSources: () => openSources(),
     onSound: toggleMute,
+    onGlossary: () => openGlossary(),
   });
 
   titleScreen = new TitleScreen(screenLayer, {
@@ -470,6 +494,10 @@ function setupInput() {
     }
     if (event.code === 'Enter' || event.code === 'Space') {
       if (event.repeat) return;
+      if (glossary?.isOpen()) {
+        event.preventDefault();
+        return;
+      }
       if (app.phase === 'title' && !hasBlockingModal()) {
         event.preventDefault();
         if (app.saveInfo) continueMission();
@@ -563,7 +591,8 @@ function setupInput() {
 
 function hasBlockingModal() {
   return Boolean(
-    pauseMenu?.isOpen() ||
+    glossary?.isOpen() ||
+      pauseMenu?.isOpen() ||
       sourcesModal?.isOpen() ||
       controlsModal?.isOpen?.() ||
       evaluationScreen?.isOpen() ||
@@ -600,6 +629,10 @@ function toggleMute() {
 }
 
 function handleEscape() {
+  if (glossary?.isOpen()) {
+    glossary.close();
+    return;
+  }
   if (sourcesModal?.isOpen()) {
     sourcesModal.close();
     return;
@@ -653,7 +686,13 @@ function closePanels() {
   machinePanel?.close();
   commsPanel?.close();
   missionBoard?.close();
+  glossary?.close();
   if (app.panel && app.panel !== 'pause') app.panel = null;
+}
+
+function openGlossary(termId = null) {
+  glossary.open(termId ?? null);
+  audio.play('click');
 }
 
 function openSources(sourceId = null) {
@@ -965,6 +1004,11 @@ function actionError(result) {
     outage: 'The Deep Space Network is down. Try again after the outage.',
     no_sample: 'No sample aboard for that site.',
     already_sent: 'That report has already been sent.',
+    already_queued: 'That report is already waiting for the next relay pass.',
+    occupied: 'That tray already has a crop growing.',
+    empty: 'That tray is empty. Plant a crop first.',
+    off: 'This machine is switched off.',
+    no_water: 'Not enough water for that action.',
     not_ready: 'That contract is not ready to claim yet.',
     claimed: 'That contract has already been claimed.',
     clean: 'The panels are already clean.',
@@ -1160,6 +1204,7 @@ function triggerEnding() {
     scans: sim.state.scans,
     samples: sim.state.samples,
     reports: sim.state.reports,
+    reportQueue: sim.state.reportQueue.map((item) => item.poiId),
   });
   refreshHud();
   notifications.clearBanner();
@@ -1223,6 +1268,7 @@ function goToTitle(initial = false) {
   pauseMenu?.close();
   sourcesModal?.close();
   controlsModal?.close();
+  glossary?.close();
   evaluationScreen?.close();
   introScreen?.destroy();
   dialogue?.close();
@@ -1266,6 +1312,7 @@ function startNewGame({ presetId = null, skipIntro = false, skipTutorial = false
   pauseMenu?.close();
   sourcesModal?.close();
   controlsModal?.close();
+  glossary?.close();
   evaluationScreen?.close();
   introScreen?.destroy();
   dialogue?.close();
@@ -1398,6 +1445,7 @@ function finishIntro() {
     lines,
     onComplete: () => beginGameplay({ silent: false }),
     onSkip: () => beginGameplay({ silent: true }),
+    onGlossary: () => openGlossary(),
   });
   audio.play('event');
 }
@@ -1490,6 +1538,7 @@ function updateObjective(force = false) {
     scans: sim.state.scans,
     samples: sim.state.samples,
     reports: sim.state.reports,
+    reportQueue: sim.state.reportQueue.map((item) => item.poiId),
   });
 }
 

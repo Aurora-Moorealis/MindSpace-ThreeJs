@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { GameSim } from '../src/core/sim.js';
+import { ECONOMY } from '../src/data/economy.js';
 import {
   BROKEN_KEY,
   MISSION_ID,
@@ -181,4 +182,54 @@ test('records with inconsistent tick or status are rejected', () => {
   const badStatus = JSON.parse(JSON.stringify(record));
   badStatus.status = 'victory';
   assert.equal(isValidRecord(badStatus), false);
+});
+
+test('queue and crops round-trip through a save record', () => {
+  const sim = new GameSim();
+  sim.plantTray(0);
+  sim.state.crops[1] = { progress: 9 };
+  sim.setPresence({ outside: true, inShelter: false });
+  sim.completeScan('site_a');
+  sim.setPresence({ outside: false, inShelter: false });
+  sim.sendReport('site_a');
+
+  const record = buildRecord({ sim, app: makeApp() });
+  const storage = new MemoryStorage();
+  assert.equal(writeSave(record, storage), true);
+  const result = readSave(storage);
+  assert.equal(result.error, null);
+
+  const restoredSim = new GameSim();
+  assert.equal(applyRecord(result.record, { sim: restoredSim, app: {} }), true);
+  assert.deepEqual(restoredSim.state.crops, sim.state.crops);
+  assert.deepEqual(restoredSim.state.reportQueue, sim.state.reportQueue);
+});
+
+test('a version-1 record without queue or crops still restores', () => {
+  const sim = new GameSim();
+  sim.state.tick = 5;
+  sim.state.resources.energy = 40;
+  const record = buildRecord({ sim, app: makeApp() });
+  delete record.sim.state.reportQueue;
+  delete record.sim.state.crops;
+  delete record.sim.state.stats.harvests;
+  assert.equal(isValidRecord(record), true);
+
+  const direct = new GameSim();
+  assert.equal(direct.restore(record.sim), true);
+  assert.deepEqual(direct.state.reportQueue, []);
+  assert.equal(direct.state.crops.length, ECONOMY.hydroponics.trays);
+  assert.equal(direct.state.stats.harvests, 0);
+
+  const storage = new MemoryStorage();
+  assert.equal(writeSave(record, storage), true);
+  const result = readSave(storage);
+  assert.equal(result.error, null);
+
+  const restoredSim = new GameSim();
+  assert.equal(applyRecord(result.record, { sim: restoredSim, app: {} }), true);
+  assert.deepEqual(restoredSim.state.reportQueue, []);
+  assert.equal(restoredSim.state.crops.length, ECONOMY.hydroponics.trays);
+  assert.ok(restoredSim.state.crops.every((crop) => crop === null));
+  assert.equal(restoredSim.state.stats.harvests, 0);
 });

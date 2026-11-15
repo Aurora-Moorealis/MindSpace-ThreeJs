@@ -478,16 +478,25 @@ export class World {
    * Single entry point for mission guidance. The current target comes from the
    * same objective calculation as the HUD, so world and HUD cannot diverge.
    */
-  setMissionMarkers({ currentId = null, scans = [], samples = [], reports = [] } = {}) {
-    const signature = `${currentId ?? ''}|${scans.join(',')}|${samples.join(',')}|${reports.join(',')}`;
+  setMissionMarkers({ currentId = null, scans = [], samples = [], reports = [], reportQueue = [] } = {}) {
+    const signature = `${currentId ?? ''}|${scans.join(',')}|${samples.join(',')}|${reports.join(',')}|${reportQueue.join(',')}`;
     if (signature === this.missionMarkerSignature) return;
     this.missionMarkerSignature = signature;
     this.currentMissionTarget = currentId;
     const reported = new Set(reports);
+    const queued = new Set(reportQueue);
     const sampled = new Set(samples);
 
     for (const poi of POIS) {
-      const state = reported.has(poi.id) ? 'reported' : sampled.has(poi.id) ? 'sampled' : 'pending';
+      // A report waiting for the relay pass still means the site is surveyed:
+      // it must never fall back to the unscanned state.
+      const state = reported.has(poi.id)
+        ? 'reported'
+        : queued.has(poi.id)
+          ? 'queued'
+          : sampled.has(poi.id)
+            ? 'sampled'
+            : 'pending';
       this.missionStates.set(poi.id, state);
       const current = currentId === poi.id;
       this.poiVisuals.get(poi.id)?.setMissionState(state, current);
@@ -526,6 +535,7 @@ export class World {
       scans: this.sim.state.scans,
       samples: this.sim.state.samples,
       reports: this.sim.state.reports,
+      reportQueue: this.sim.state.reportQueue.map((item) => item.poiId),
     });
   }
 
@@ -537,6 +547,9 @@ export class World {
     if (state === 'reported') {
       status = 'REPORT SENT';
       accent = '#6ee7a8';
+    } else if (state === 'queued') {
+      status = 'QUEUED';
+      accent = '#ffb347';
     } else if (state === 'sampled') {
       status = 'SAMPLE READY · TAKE TO COMMS';
       accent = '#ffb347';
