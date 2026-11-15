@@ -98,9 +98,10 @@ function rotateLocal(x, z, rotation) {
 }
 
 export class World {
-  constructor(scene, sim) {
+  constructor(scene, sim, models = null) {
     this.scene = scene;
     this.sim = sim;
+    this.models = models;
     this.group = new THREE.Group();
     this.scene.add(this.group);
     this.colliders = [];
@@ -118,7 +119,7 @@ export class World {
     this.group.add(this.base.group);
     this.colliders.push(...this.base.colliders);
 
-    this.exterior = buildExterior();
+    this.exterior = buildExterior(models);
     this.group.add(this.exterior.group);
     this.colliders.push(...this.exterior.colliders);
 
@@ -127,7 +128,7 @@ export class World {
     this._buildPois();
     this._buildRoomSigns();
 
-    this.astronaut = new Astronaut();
+    this.astronaut = new Astronaut(models?.astronaut);
     this.group.add(this.astronaut.group);
 
     this._buildHighlight();
@@ -576,13 +577,15 @@ export class World {
     this.astronaut.update(dt, moving, sprinting ? 1.5 : 1);
     this.nearestId = nearest?.id ?? null;
 
+    const now = performance.now();
+
     // Highlight ring.
     if (nearest && nearest.type !== 'poi') {
       this.highlight.visible = true;
       this.highlight.position.set(nearest.position.x, nearest.position.y + 0.14, nearest.position.z);
-      const pulse = 1 + Math.sin(performance.now() * 0.004) * 0.06;
+      const pulse = 1 + Math.sin(now * 0.004) * 0.06;
       this.highlight.scale.setScalar(pulse);
-      this.highlight.material.opacity = 0.45 + Math.sin(performance.now() * 0.004) * 0.15;
+      this.highlight.material.opacity = 0.45 + Math.sin(now * 0.004) * 0.15;
     } else {
       this.highlight.visible = false;
     }
@@ -611,8 +614,18 @@ export class World {
       if (!visual) continue;
       const scanned = sim.state.scans.includes(poi.id);
       const progress = scanTarget === poi.id ? scanProgress : scanned ? 1 : 0;
-      visual.setMissionState(this.missionStates.get(poi.id) ?? 'pending', this.currentMissionTarget === poi.id);
-      visual.setProgress(progress, scanned);
+      const missionState = this.missionStates.get(poi.id) ?? 'pending';
+      const missionCurrent = this.currentMissionTarget === poi.id;
+      if (visual._lastMissionState !== missionState || visual._lastMissionCurrent !== missionCurrent) {
+        visual._lastMissionState = missionState;
+        visual._lastMissionCurrent = missionCurrent;
+        visual.setMissionState(missionState, missionCurrent);
+      }
+      if (visual._lastProgress !== progress || visual._lastScanned !== scanned) {
+        visual._lastProgress = progress;
+        visual._lastScanned = scanned;
+        visual.setProgress(progress, scanned);
+      }
       visual.update?.(dt);
     }
 
@@ -623,14 +636,16 @@ export class World {
       if (!label) continue;
       const dist = Math.hypot(player.x - item.position.x, player.z - item.position.z);
       const maxDist = item.type === 'poi' ? 42 : 12.5;
-      label.sprite.visible = dist < maxDist;
-      label.material.opacity = Math.min(1, Math.max(0.12, 1.25 - dist / maxDist));
-      const wantDepth = this.nearestId !== item.id && item.type !== 'poi';
+      const visible = dist < maxDist;
+      if (label.sprite.visible !== visible) label.sprite.visible = visible;
+      if (!visible) continue;
+      const isNearest = this.nearestId === item.id;
+      const opacity = isNearest ? 1 : Math.min(1, Math.max(0.12, 1.25 - dist / maxDist));
+      if (Math.abs(label.material.opacity - opacity) > 0.01) label.material.opacity = opacity;
+      const wantDepth = !isNearest && item.type !== 'poi';
       if (label.material.depthTest !== wantDepth) label.material.depthTest = wantDepth;
-      if (this.nearestId === item.id) {
-        label.sprite.renderOrder = 30;
-        label.material.opacity = 1;
-      }
+      const wantOrder = isNearest ? 30 : 25;
+      if (label.sprite.renderOrder !== wantOrder) label.sprite.renderOrder = wantOrder;
     }
 
     // Comms marker label: permanent, but only legible near the base.

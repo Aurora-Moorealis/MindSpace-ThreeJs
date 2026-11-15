@@ -29,7 +29,7 @@ export class Stage {
       powerPreference: 'high-performance',
       alpha: false,
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -46,11 +46,17 @@ export class Stage {
     this.mode = 'title';
     this.orthoHeight = 30;
     this.orthoTargetHeight = 30;
+    this.userZoom = 0;
     this.followTarget = new THREE.Vector3(0, 0, 0);
     this.titleTime = 0;
     this.intro = { shot: 0, progress: 0 };
     this.interiorLights = [];
     this.env = { dayFactor: 1, storm: 0, outside: false, lightsOn: true };
+    this._envKey = '';
+    this._fogNightColor = new THREE.Color(0x070b14);
+    this._fogDayColor = new THREE.Color(0x1a2a3f);
+    this._fogStormColor = new THREE.Color(0x3a1218);
+    this._fogWorkColor = new THREE.Color();
     this.quality = 'high';
 
     this._buildLights();
@@ -60,7 +66,7 @@ export class Stage {
     this.renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(this.renderPass);
     this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      new THREE.Vector2(Math.max(1, Math.floor(window.innerWidth / 2)), Math.max(1, Math.floor(window.innerHeight / 2))),
       0.22,
       0.6,
       0.9
@@ -79,7 +85,7 @@ export class Stage {
     this.sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
     this.sun.position.set(30, 46, 16);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(1024, 1024);
     this.sun.shadow.camera.left = -62;
     this.sun.shadow.camera.right = 62;
     this.sun.shadow.camera.top = 62;
@@ -283,7 +289,15 @@ export class Stage {
     this.orthographic.lookAt(target.x, target.y, target.z);
   }
 
+  adjustZoom(delta) {
+    this.userZoom = Math.max(-8, Math.min(12, this.userZoom + delta));
+  }
+
   setEnvironment({ time, storm = 0, outside = false, lightsOn = true }) {
+    const envKey = `${Math.floor(time * 20)}|${Math.round(storm * 250)}|${outside ? 1 : 0}|${lightsOn ? 1 : 0}`;
+    if (envKey === this._envKey) return;
+    this._envKey = envKey;
+
     const tick = Math.floor(time);
     const day = isDaylight(tick);
     const hour = getHourOfDay(tick);
@@ -303,9 +317,9 @@ export class Stage {
     this.stormLight.intensity = storm * 1.3;
     this.stormLight.color.setRGB(1, 0.28, 0.18);
 
-    const fogColor = new THREE.Color(0x070b14).lerp(new THREE.Color(0x1a2a3f), dayFactor);
-    if (storm > 0) fogColor.lerp(new THREE.Color(0x3a1218), Math.min(0.65, storm * 0.6));
-    this.scene.fog.color.copy(fogColor);
+    this._fogWorkColor.copy(this._fogNightColor).lerp(this._fogDayColor, dayFactor);
+    if (storm > 0) this._fogWorkColor.lerp(this._fogStormColor, Math.min(0.65, storm * 0.6));
+    this.scene.fog.color.copy(this._fogWorkColor);
     this.scene.fog.density = 0.0022 + (outside ? 0.0006 : 0) + storm * 0.0012;
 
     for (const light of this.interiorLights) {
@@ -320,11 +334,17 @@ export class Stage {
 
   updateCamera(dt, { target, outside = false } = {}) {
     if (this.mode === 'follow' && target) {
-      const smooth = 1 - Math.exp(-dt * 6);
+      const smooth = 1 - Math.exp(-dt * 8);
       this.followTarget.lerp(target, smooth);
-      this.orthoTargetHeight = outside ? 32 : 30;
-      this.orthoHeight += (this.orthoTargetHeight - this.orthoHeight) * (1 - Math.exp(-dt * 3));
-      this._updateOrthoFrustum();
+      this.orthoTargetHeight = (outside ? 32 : 30) + this.userZoom;
+      const heightDiff = this.orthoTargetHeight - this.orthoHeight;
+      if (Math.abs(heightDiff) > 0.001) {
+        this.orthoHeight += heightDiff * (1 - Math.exp(-dt * 6));
+        if (Math.abs(this.orthoTargetHeight - this.orthoHeight) <= 0.001) {
+          this.orthoHeight = this.orthoTargetHeight;
+        }
+        this._updateOrthoFrustum();
+      }
       const shake = this.env.storm > 0.35 ? Math.sin(performance.now() * 0.02) * 0.02 * this.env.storm : 0;
       this.orthographic.position.set(
         this.followTarget.x + shake,
@@ -339,8 +359,11 @@ export class Stage {
       const radius = this.mode === 'overview' ? 54 : 62;
       const height = this.mode === 'overview' ? 38 : 48;
       this.camera.position.set(Math.sin(angle) * radius, height, Math.cos(angle) * radius);
-      this.camera.fov = this.mode === 'overview' ? 46 : 48;
-      this.camera.updateProjectionMatrix();
+      const targetFov = this.mode === 'overview' ? 46 : 48;
+      if (this.camera.fov !== targetFov) {
+        this.camera.fov = targetFov;
+        this.camera.updateProjectionMatrix();
+      }
       this.camera.lookAt(0, 0, this.mode === 'overview' ? 5 : 4);
     } else if (this.mode === 'cinematic') {
       const cfg = CINEMATIC_SHOTS[this.intro.shot];
@@ -373,7 +396,7 @@ export class Stage {
     this.perspective.aspect = width / Math.max(1, height);
     this.perspective.updateProjectionMatrix();
     this._updateOrthoFrustum();
-    this.bloomPass?.setSize(width, height);
+    this.bloomPass?.setSize(Math.max(1, Math.floor(width / 2)), Math.max(1, Math.floor(height / 2)));
   }
 
   render() {
