@@ -271,3 +271,16 @@ test('preset capture round-trips the important state', () => {
   assert.equal(restored.state.machines.battery.upgrades.includes('battery_cells'), true);
   assert.ok(restored.energyCapacity > 100);
 });
+
+test('infinite mineral veins can be mined repeatedly and refined for ISRU resources', () => {
+  const sim = new GameSim();
+  sim.state.resources.water = 50;
+  const r1 = sim.mineMineral('water_ice');
+  const r2 = sim.mineMineral('water_ice');
+  assert.equal(r1.ok, true);
+  assert.equal(r2.count, 2);
+  const refined = sim.refineMineral('water_ice');
+  assert.equal(refined.ok, true);
+  assert.equal(refined.remaining, 1);
+  assert.equal(sim.state.resources.water, 58);
+});

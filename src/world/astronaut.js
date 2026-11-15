@@ -125,6 +125,19 @@ export class Astronaut {
     this.armL = makeArm(-1);
     this.armR = makeArm(1);
 
+    // Lunar pickaxe held in right hand when slot 1 is equipped.
+    const pickaxe = new THREE.Group();
+    const shaft = cylinder(0.025, 0.028, 0.72, 6, COLORS.amber);
+    shaft.rotation.x = Math.PI / 2;
+    shaft.position.set(0, -0.71, 0.24);
+    pickaxe.add(shaft);
+    const head = box(0.36, 0.06, 0.08, COLORS.teal);
+    head.position.set(0, -0.71, 0.54);
+    pickaxe.add(head);
+    pickaxe.visible = true;
+    this.armR.add(pickaxe);
+    this.pickaxe = pickaxe;
+
     // Legs.
     const makeLeg = (side) => {
       const pivot = new THREE.Group();
@@ -191,17 +204,22 @@ export class Astronaut {
     this.groundY = y;
   }
 
-  update(dt, moving) {
+  setPickaxeEquipped(equipped) {
+    if (this.pickaxe) this.pickaxe.visible = Boolean(equipped);
+  }
+
+  update(dt, moving, mining = false) {
     this.moving = moving;
     const speed = 8.5;
     if (moving) this.walkPhase += dt * speed;
+    else if (mining) this.walkPhase += dt * 9.5;
     else this.walkPhase += dt * 1.6;
     const swing = moving ? Math.sin(this.walkPhase) * 0.62 : Math.sin(this.walkPhase) * 0.025;
     const armSwing = moving ? Math.sin(this.walkPhase) * 0.5 : Math.sin(this.walkPhase) * 0.02;
     this.legL.rotation.x = swing;
     this.legR.rotation.x = -swing;
     this.armL.rotation.x = -armSwing;
-    this.armR.rotation.x = armSwing;
+    this.armR.rotation.x = mining ? -0.65 + Math.sin(this.walkPhase) * 0.85 : armSwing;
     this.armL.rotation.z = 0.04;
     this.armR.rotation.z = -0.04;
     const bob = moving ? Math.abs(Math.sin(this.walkPhase)) * 0.045 : Math.sin(this.walkPhase) * 0.008;

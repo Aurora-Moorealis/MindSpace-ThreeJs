@@ -21,6 +21,7 @@ import { ECONOMY, getHourOfDay, isDaylight } from '../data/economy.js';
 import { EVENTS, eventIntensityAt } from '../data/events.js';
 import { MACHINES } from '../data/machines.js';
 import { POIS } from '../data/pois.js';
+import { MINERALS } from '../data/minerals.js';
 import { SUBMISSIONS } from '../data/submissions.js';
 import { EventLog, LOG_TYPES } from './event-log.js';
 
@@ -105,6 +106,7 @@ export class GameSim {
       samples: [],
       reports: [],
       scanLog: [],
+      minerals: { water_ice: 0, ilmenite: 0, anorthite: 0, olivine: 0 },
       submissions,
       supply: { cooldown: 0, pending: null },
       firedEvents: [],
@@ -118,6 +120,7 @@ export class GameSim {
         reportsSent: 0,
         submissionsClaimed: 0,
         scans: 0,
+        mined: 0,
         stormsSurvived: 0,
         energyWasted: 0,
       },
@@ -960,6 +963,37 @@ export class GameSim {
     return { ok: true, dose };
   }
 
+  mineMineral(mineralId) {
+    const mineral = MINERALS[mineralId];
+    if (!mineral) return { ok: false, reason: 'unknown_mineral' };
+    if (!this.state.minerals) {
+      this.state.minerals = { water_ice: 0, ilmenite: 0, anorthite: 0, olivine: 0 };
+    }
+    this.state.minerals[mineralId] = (this.state.minerals[mineralId] ?? 0) + 1;
+    this.state.stats.mined = (this.state.stats.mined ?? 0) + 1;
+    this.state.suit = clamp(this.state.suit - 0.35 * this.stats.suit_decay, 0, 100);
+    return { ok: true, count: this.state.minerals[mineralId], mineral };
+  }
+
+  refineMineral(mineralId) {
+    const mineral = MINERALS[mineralId];
+    if (!mineral) return { ok: false, reason: 'unknown_mineral' };
+    const current = this.state.minerals?.[mineralId] ?? 0;
+    if (current <= 0) return { ok: false, reason: 'empty' };
+    this.state.minerals[mineralId] = current - 1;
+    const { resource, amount } = mineral.bonus;
+    if (resource === 'suit') {
+      this.state.suit = clamp(this.state.suit + amount, 0, 100);
+    } else if (RESOURCE_IDS.includes(resource)) {
+      this.state.resources[resource] = clamp(
+        this.state.resources[resource] + amount,
+        0,
+        this.getResourceCapacity(resource)
+      );
+    }
+    return { ok: true, remaining: this.state.minerals[mineralId], mineral };
+  }
+
   sendReport(poiId) {
     const poi = this.poisData.find((p) => p.id === poiId);
     if (!poi) return { ok: false, reason: 'unknown_poi' };
@@ -1126,6 +1160,7 @@ export class GameSim {
       samples: [...s.samples],
       reports: [...s.reports],
       scanLog: s.scanLog.map((x) => ({ ...x })),
+      minerals: { ...(s.minerals ?? { water_ice: 0, ilmenite: 0, anorthite: 0, olivine: 0 }) },
       submissions: Object.fromEntries(
         Object.entries(s.submissions).map(([id, sub]) => [id, { status: sub.status, readyTick: sub.readyTick, claimedTick: sub.claimedTick }])
       ),
@@ -1168,6 +1203,13 @@ export class GameSim {
     s.samples = [...(preset.samples ?? [])];
     s.reports = [...(preset.reports ?? [])];
     s.scanLog = (preset.scanLog ?? []).map((x) => ({ ...x }));
+    s.minerals = {
+      water_ice: 0,
+      ilmenite: 0,
+      anorthite: 0,
+      olivine: 0,
+      ...(preset.minerals ?? {}),
+    };
     s.firedEvents = [...(preset.firedEvents ?? [])];
     if (!s.firedEvents.length) {
       s.firedEvents = this.eventsData.filter((row) => row.onset <= s.tick).map((row) => row.id);

@@ -1419,6 +1419,17 @@ kbd {
   color: var(--teal);
 }
 
+.inv-count {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--amber);
+  line-height: 1;
+}
+
 .inv-icon {
   display: grid;
   place-items: center;

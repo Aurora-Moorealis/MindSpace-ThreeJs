@@ -33,6 +33,7 @@ import { DebugOverlay } from './ui/debug.js';
 import { loadDemoPreset } from './data/demo-states.js';
 import { MACHINES } from './data/machines.js';
 import { POIS } from './data/pois.js';
+import { MINERAL_ORDER, MINERALS, NASA_PROTOTYPE_TRUCK } from './data/minerals.js';
 import { STRINGS } from './data/strings.js';
 import { ECONOMY } from './data/economy.js';
 
@@ -463,6 +464,14 @@ function setupInput() {
       }
       return;
     }
+    if (event.code === 'KeyF') {
+      if (event.repeat) return;
+      if (app.phase === 'game' && !app.paused && !app.panel && !hasBlockingModal()) {
+        event.preventDefault();
+        handleRefineSelected();
+      }
+      return;
+    }
     if (movementCodes.has(event.code)) {
       if (app.phase === 'game' && !app.paused && !app.panel) {
         event.preventDefault();
@@ -648,6 +657,33 @@ function handleInteract() {
     startScan(poi);
     return;
   }
+  if (nearest.type === 'mineral') {
+    if (app.selectedSlot !== 0) {
+      notifications.toast({
+        kind: 'warn',
+        title: 'Equip Lunar Pickaxe',
+        body: 'Select Slot 1 (key 1 or scroll wheel) to equip the pickaxe before mining.',
+        icon: 'pickaxe',
+        duration: 3200,
+      });
+      audio.play('error');
+      return;
+    }
+    startMining(nearest);
+    return;
+  }
+  if (nearest.type === 'prototype') {
+    notifications.toast({
+      kind: 'info',
+      title: NASA_PROTOTYPE_TRUCK.name,
+      body: `${NASA_PROTOTYPE_TRUCK.nasaFact} (${NASA_PROTOTYPE_TRUCK.specs[2]})`,
+      sourceId: NASA_PROTOTYPE_TRUCK.source,
+      icon: 'truck',
+      duration: 7000,
+    });
+    audio.play('click');
+    return;
+  }
   if (nearest.id === 'comms_console') {
     openComms();
     return;
@@ -657,6 +693,50 @@ function handleInteract() {
     return;
   }
   openMachinePanel(nearest.id);
+}
+
+function startMining(vein) {
+  const mineral = MINERALS[vein.mineralId];
+  if (!mineral) return;
+  app.scan = {
+    type: 'mine',
+    targetId: vein.id,
+    mineralId: mineral.id,
+    progress: 0,
+    duration: mineral.mineSeconds,
+    startedAt: performance.now(),
+    pausedMs: 0,
+    pausedAt: null,
+    label: `MINING ${mineral.name.toUpperCase()} (${mineral.formula}) · MOHS ${mineral.mohs}`,
+  };
+  audio.play('scan');
+}
+
+function handleRefineSelected() {
+  if (app.selectedSlot < 1 || app.selectedSlot > 4) return;
+  const mineralId = MINERAL_ORDER[app.selectedSlot - 1];
+  const result = sim.refineMineral(mineralId);
+  if (!result.ok) {
+    notifications.toast({
+      kind: 'info',
+      title: `No ${MINERALS[mineralId]?.name ?? 'mineral'} in slot`,
+      body: 'Equip the Pickaxe (1) and mine an exterior vein first.',
+      icon: 'mineral',
+      duration: 2800,
+    });
+    audio.play('error');
+    return;
+  }
+  notifications.toast({
+    kind: 'good',
+    title: `Refined ${result.mineral.name} (${result.mineral.formula})`,
+    body: `ISRU yield applied: ${result.mineral.bonus.label}.`,
+    sourceId: result.mineral.source,
+    icon: result.mineral.id === 'water_ice' ? 'water' : 'mineral',
+    duration: 4200,
+  });
+  audio.play('success');
+  refreshHud();
 }
 
 function startScan(poi) {
@@ -704,13 +784,14 @@ function startCleanTask() {
 function cancelScan(reason) {
   if (!app.scan) return;
   const wasClean = app.scan.type === 'clean';
+  const wasMine = app.scan.type === 'mine';
   app.scan = null;
   if (reason !== 'completed') {
     notifications.toast({
       kind: 'info',
-      title: wasClean ? 'Cleaning interrupted' : 'Scan cancelled',
+      title: wasMine ? 'Mining interrupted' : wasClean ? 'Cleaning interrupted' : 'Scan cancelled',
       body: 'Stay still and keep the target in range while the progress bar fills.',
-      icon: 'scan',
+      icon: wasMine ? 'pickaxe' : 'scan',
       duration: 3000,
     });
   }
@@ -723,6 +804,19 @@ function completeScanTask() {
   if (task.type === 'scan') {
     const result = sim.completeScan(task.targetId);
     if (!result.ok) actionError(result);
+  } else if (task.type === 'mine') {
+    const result = sim.mineMineral(task.mineralId);
+    if (result.ok) {
+      notifications.toast({
+        kind: 'good',
+        title: `+1 ${result.mineral.name} (${result.mineral.formula})`,
+        body: `${result.mineral.nasaFact} Now carrying ×${result.count}.`,
+        sourceId: result.mineral.source,
+        icon: result.mineral.id === 'water_ice' ? 'water' : 'mineral',
+        duration: 5500,
+      });
+      audio.play('success');
+    }
   } else {
     const result = sim.cleanSolarArray();
     if (!result.ok) actionError(result);
@@ -1128,7 +1222,7 @@ function refreshHud(cachedNearest = undefined) {
       ? cachedNearest
       : world.getNearestInteractable(app.player, 3.6);
   app.nearest = nearest;
-  app.interaction = nearest ? world.describeInteraction(nearest) : null;
+  app.interaction = nearest ? world.describeInteraction(nearest, { pickaxeEquipped: app.selectedSlot === 0 }) : null;
   hud.update(sim, {
     speed: app.speed,
     presence: sim.presence,
@@ -1150,13 +1244,13 @@ function updateScanAndInteractions(dt) {
       cancelScan('panel');
     } else {
       const targetPos =
-        app.scan.type === 'scan'
+        app.scan.type === 'scan' || app.scan.type === 'mine'
           ? world.getInteractable(app.scan.targetId)?.position
           : world.getMachineWorldPosition('solar_array');
       const distance = targetPos
         ? Math.hypot(app.player.x - targetPos.x, app.player.z - targetPos.z)
         : 999;
-      const limit = app.scan.type === 'scan' ? 4.3 : 5.4;
+      const limit = app.scan.type === 'scan' || app.scan.type === 'mine' ? 4.3 : 5.4;
       const moving = app.keys.size > 0;
       if (moving) {
         cancelScan('moved');
@@ -1250,6 +1344,9 @@ function updateGameplay(dt, rawDt) {
     nearest,
     scanProgress: app.scan?.progress ?? 0,
     scanTarget: app.scan?.type === 'scan' ? app.scan.targetId : null,
+    mineProgress: app.scan?.progress ?? 0,
+    mineTarget: app.scan?.type === 'mine' ? app.scan.targetId : null,
+    pickaxeEquipped: app.selectedSlot === 0,
     moving,
     outside: app.outside,
     time: app.time,

@@ -12,6 +12,7 @@ const CONTROLS = [
   ['W A S D / Arrows', 'Move the astronaut'],
   ['E', 'Interact, inspect a machine, start a scan'],
   ['1–5 / Wheel', 'Select inventory slot (Shift+Wheel zoom)'],
+  ['F', 'Refine selected mineral for ISRU resources'],
   ['P', 'Pause the mission clock'],
   ['Esc', 'Close a panel or open pause'],
   ['M', 'Mute / unmute sound'],
