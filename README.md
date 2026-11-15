@@ -1,349 +1,359 @@
 # Outpost Lunar — Junior Astronaut Mission Trainer
 
-Adaptación jugable en **Three.js** del documento de diseño
+A playable **Three.js** adaptation of the design document
 [`docs/designs/junior-astronauta-outpost-lunar.md`](docs/designs/junior-astronauta-outpost-lunar.md)
-(original para Godot 4.7, NASA Space Apps Challenge).
+(originally for Godot 4.7, NASA Space Apps Challenge).
 
-Una astronauta sola en una base lunar de cinco salas. Cuatro recursos, nueve
-máquinas, dosis de radiación en mSv, tormentas solares con datos NASA
-archivados, un enlace Tierra–Luna con retardo real y una misión científica de
-tres informes. Toda partida termina en una pantalla de evaluación.
+A lone astronaut in a five-room lunar base. Four resources, nine machines,
+radiation doses in mSv, solar storms driven by archived NASA data, an
+Earth–Moon link with real latency, and a scientific mission built around three
+reports. Every run ends on an evaluation screen.
 
-![Pantalla de título](docs/screenshots/title.png)
+![Title screen](docs/screenshots/title.png)
 
-| Base y taller | Consola de comunicaciones |
+| Base and workshop | Communications console |
 | --- | --- |
 | ![Gameplay](docs/screenshots/gameplay-workshop.png) | ![Comms](docs/screenshots/comms-reports.png) |
 
-| Evaluación final | Exterior lunar |
+| Final evaluation | Lunar exterior |
 | --- | --- |
-| ![Evaluación](docs/screenshots/evaluation.png) | ![EVA](docs/screenshots/eva-exterior.png) |
+| ![Evaluation](docs/screenshots/evaluation.png) | ![EVA](docs/screenshots/eva-exterior.png) |
 
-| Inspector de máquina | Hub central |
+| Machine inspector | Central hub |
 | --- | --- |
-| ![Máquina](docs/screenshots/machine-panel.png) | ![Hub](docs/screenshots/hub.png) |
+| ![Machine](docs/screenshots/machine-panel.png) | ![Hub](docs/screenshots/hub.png) |
 
-## Estado
+## Status
 
-- **Jugable de principio a fin** en navegador de escritorio: título → intro →
-  tutorial → base → escaneo → informes → evaluación → freeplay.
-- **Sin peticiones externas en runtime.** Los datos NASA están embebidos, los
-  modelos 3D se sirven como assets locales del build y las fuentes solo se abren
-  si el jugador hace clic en un enlace.
-- **Guardado local automático.** La partida en curso se guarda en el navegador
-  en cada tick y al pausar, y el título ofrece continuarla. Ganar conserva el
-  guardado marcado como completado; perder la misión lo elimina. Los presets de
-  demo no tocan el guardado real. La cola de informes y los cultivos de las
-  bandejas también se persisten.
-- **Ciencia explicada en la interfaz.** La dosis se muestra en puntos y en mSv,
-  los informes esperan al pase de relay y la hidroponía crece por bandejas. Un
-  glosario de 10 términos y las notas de modelo simplificado separan el dato
-  real de la adaptación.
-- **Dos presets de demo** para ver el arco completo en minutos:
-  - *Mid-mission*: un informe transmitido, una muestra en la mochila, contratos
-    listos y una ventana de radiación a 3 horas de juego.
-  - *Final hour*: dos informes transmitidos, la tercera muestra lista y una
-    ventana de radiación final a 3 horas. Enviar el último informe lo encola y
-    el siguiente pase de relay, 3 horas después, gana la partida.
+- **Playable end to end** in a desktop browser: title → intro → tutorial → base
+  → scanning → reports → evaluation → freeplay.
+- **No external requests at runtime.** NASA data is embedded, 3D models are
+  served as local build assets, and sources only open if the player clicks a
+  link.
+- **Automatic local save.** The current run is saved in the browser on every
+  tick and when paused, and the title screen offers to continue it. Winning keeps
+  the save marked as completed; losing the mission deletes it. Demo presets never
+  touch the real save. The report queue and tray crops are persisted too.
+- **Science explained in the interface.** Dose is shown in points and in mSv,
+  reports wait for the relay pass, and hydroponics grows by trays. A 10-term
+  glossary and the simplified-model notes separate real data from the
+  adaptation.
+- **Two demo presets** to see the whole arc in minutes:
+  - *Mid-mission*: one report transmitted, one sample in the backpack, contracts
+    ready and a radiation window 3 game hours away.
+  - *Final hour*: two reports transmitted, the third sample ready and a final
+    radiation window 3 hours away. Sending the last report queues it, and the
+    next relay pass, 3 hours later, wins the game.
 
-## Arranque rápido
+## Quick start
 
-Requisitos: **Node.js 22+** y un navegador de escritorio con WebGL.
+Requirements: **Node.js 22+** and a desktop browser with WebGL.
 
 ```bash
 npm install
 npm run dev
-# abre http://127.0.0.1:5173/
+# open http://127.0.0.1:5173/
 ```
 
-Build de producción:
+Production build:
 
 ```bash
 npm run build
 npm run preview
 ```
 
-El resultado queda en `dist/`. Es una web estática; se puede publicar en GitHub
-Pages, Netlify, un servidor local o empaquetar con Electron/Tauri si se quiere
-una build de Windows.
+The output lands in `dist/`. It is a static site; it can be published on GitHub
+Pages, Netlify, a local server, or packaged with Electron/Tauri if a Windows
+build is wanted.
 
-## Controles
+## Controls
 
-| Tecla | Acción |
+| Key | Action |
 | --- | --- |
-| `W A S D` / flechas | Mover a la astronauta |
-| `Shift` (mantener) | Sprint mientras se mueve |
-| `E` | Interactuar, abrir una máquina, empezar un escaneo |
-| `1` / `2` / `3` | Velocidad del reloj ×1 / ×5 / ×10 |
-| `P` | Pausa |
-| `Esc` | Cerrar panel o abrir pausa |
-| `M` | Silenciar / activar sonido |
-| `F1` | Overlay de debug (desarrollo) |
+| `W A S D` / arrows | Move the astronaut |
+| `Shift` (hold) | Sprint while moving |
+| `E` | Interact, open a machine, start a scan |
+| `1` / `2` / `3` | Clock speed ×1 / ×5 / ×10 |
+| `P` | Pause |
+| `Esc` | Close panel or open pause |
+| `M` | Mute / unmute sound |
+| `F1` | Debug overlay (development) |
 
-En pausa hay una lista de controles, el glosario y acceso a las fuentes de datos.
+The pause menu includes a controls list, the glossary and access to the data
+sources.
 
-## Cómo se juega
+## How to play
 
-### El reloj
+### The clock
 
-Un **tick = 1 hora de juego = 60 segundos reales a ×1**. Los multiplicadores
-×5 y ×10 cambian la tasa del tick, nunca `Engine.time_scale` (no aplica aquí,
-pero se mantiene la misma filosofía: la simulación es independiente del render).
-La misión dura **300 ticks** (12,5 días de misión) o termina antes si se
-transmiten los tres informes.
+The game clock is **compressed game time, not real lunar time**. The scale is
+fixed: **1 tick = 1 game hour = 60 real seconds at ×1**. The ×5 and ×10
+multipliers change the tick rate, never `Engine.time_scale` (it does not apply
+here, but the same philosophy holds: the simulation is independent of rendering).
 
-La interfaz llama **MISSION DAY** a cada día de misión y no usa `SOL` como
-etiqueta. Un día lunar real dura **29,53 días terrestres**; el ciclo día/noche
-del juego está comprimido para que una partida quepa en una sesión. La nota de
-compresión aparece junto al reloj, en la pausa y en el glosario.
+A **mission day** is **24 game hours: 12 of light and 12 of night**. The mission
+lasts **300 game hours (12.5 mission days)** or ends earlier if the three reports
+are transmitted. A real lunar day lasts **29.53 Earth days**, so the game's
+day/night cycle does not reproduce the lunar calendar: it compresses it.
 
-### Recursos y soporte vital
+The interface labels each mission day **MISSION DAY** and does not use `SOL` as
+a label. The compression note appears next to the clock, in the pause menu and in
+the glossary.
 
-- **Oxígeno, agua, comida y energía** (barras de 0 a 100).
-- La tripulación consume O₂, agua y comida cada hora. El **sistema de O₂**
-  convierte agua y energía en aire; el **reciclador** recupera agua; la
-  **hidroponía** produce O₂ de forma continua y comida solo al cosechar sus
-  bandejas.
-- Nutrición e hidratación son medidores a corto plazo: bajan cada hora y se
-  recargan con raciones del inventario. A cero, la salud cae.
-- Si el O₂ llega a cero, queda la **reserva del traje (6 horas)** y después la
-  muerte.
-- La energía se reparte con una **escalera de apagado fija**:
-  luces → hidroponía → reciclador → sistema de O₂. El sistema de O₂ es siempre
-  el último en caer.
+**Why the schedule is not real (note for the jury).** The compression is
+intentional: with a day of 12 hours of light and 12 of night, children aged 7 to
+12 see a complete day, understand the cause-and-effect relationship between what
+they do and what changes in the base, and can finish the mission in a single
+session. It is not a measurement, a prediction or an operational calendar. The
+"in the game / in reality / why" table, with the rest of the compressions, is in
+[`docs/DATA-SOURCES.md#política-de-escala`](docs/DATA-SOURCES.md#política-de-escala).
 
-### Radiación
+### Resources and life support
 
-La dosis **nunca baja**. Bajo techo no sube; en el exterior sube según la
-ventana solar (multiplicador del evento) y la integridad del traje. La barra de
-0 a 100 se presenta también en milisieverts: **1 punto = 2,5 mSv**, así que 100
-puntos son **250 mSv**, el límite de dosis de la misión. Los umbrales son 30,
-70 y 100 puntos:
+- **Oxygen, water, food and power** (bars from 0 to 100).
+- The crew consumes O₂, water and food every hour. The **O₂ system** turns water
+  and power into air; the **recycler** recovers water; **hydroponics** produces
+  O₂ continuously and food only when its trays are harvested.
+- Nutrition and hydration are short-term meters: they drop every hour and are
+  refilled with rations from the inventory. At zero, health falls.
+- If O₂ reaches zero, the **suit reserve (6 hours)** remains, and after that,
+  death.
+- Power is shared through a **fixed shutdown ladder**:
+  lights → hydroponics → recycler → O₂ system. The O₂ system is always the last
+  to go down.
 
-- a partir de **30 puntos (75 mSv)**, la salud máxima queda limitada;
-- por encima de **70 puntos (175 mSv)**, la tripulación recibe daño continuo;
-- a **100 puntos (250 mSv)**, la misión termina en **aborto médico por límite de
-  dosis**, no en una muerte por radiación.
+### Radiation
 
-El HUD muestra la dosis acumulada y la tasa instantánea por hora y en mSv/h. La
-evaluación final muestra el pico de dosis en ambas unidades. El refugio de
-tormenta, si está cerrado y estás dentro, reduce la dosis drásticamente. La
-conversión y la nota de modelo educativo están en el detalle de dosis y en el
-glosario.
+Dose **never goes down**. Under a roof it does not rise; outside it rises
+according to the solar window (event multiplier) and suit integrity. The 0–100
+bar is also presented in millisieverts: **1 point = 2.5 mSv**, so 100 points are
+**250 mSv**, the mission dose limit. The thresholds are 30, 70 and 100 points:
 
-### Eventos
+- from **30 points (75 mSv)**, maximum health is capped;
+- above **70 points (175 mSv)**, the crew takes continuous damage;
+- at **100 points (250 mSv)**, the mission ends in a **medical abort due to dose
+  limit**, not in a radiation death.
 
-Cinco arquetipos data-driven: **avería de máquina**, **caída de producción**,
-**pico de consumo**, **ventana de radiación** y **corte de comunicaciones**.
-Las ventanas de radiación se basan en eventos DONKI archivados; el resto está
-marcado como **SIMULATED**. Los cortes de DSN bloquean previsión y pedidos, y
-además **suspenden los pases de relay**: los informes en cola no se pierden y
-salen en el primer pase tras restablecerse el enlace.
+The HUD shows accumulated dose and the instantaneous rate per hour and in mSv/h.
+The final evaluation shows the peak dose in both units. The storm shelter, if
+closed and you are inside, reduces dose drastically. The conversion and the
+educational-model note are in the dose detail and in the glossary.
 
-### Misión y contratos
+### Events
 
-- Escanea **3 sitios** exteriores manteniéndote quieta durante 3 segundos. Cada
-  sitio muestra su estado en el mundo: pendiente, muestra lista, en cola o
-  informe transmitido; el objetivo actual se resalta y coincide con el HUD.
-- Lleva las muestras a la **consola de comunicaciones** y envía **3 informes**.
-  La señal tarda **1,28 s en cada sentido** (**2,56 s** ida y vuelta), así que la
-  base no se pilota en tiempo real.
-- Enviar un informe lo deja **en cola**: no cuenta como enviado hasta que se
-  transmite. Los pases de relay se abren cada **4 horas de juego** (en los ticks
-  2, 6, 10…) y todos los informes en cola salen juntos. La consola muestra la
-  cola y la cuenta atrás hasta el siguiente pase.
-- La victoria llega cuando se **transmite** el tercer informe. Si el tercero
-  está en cola, la partida sigue en curso hasta el pase.
-- Cuatro contratos opcionales con condiciones fijas; se reclaman en la consola.
-- Al ganar o perder, la **evaluación** muestra cinco contadores, una línea de
-  tiempo y qué pasó con el guardado de la misión.
+Five data-driven archetypes: **machine breakdown**, **production drop**,
+**consumption spike**, **radiation window** and **communications outage**.
+Radiation windows are based on archived DONKI events; the rest is marked
+**SIMULATED**. DSN outages block forecasting and orders, and also **suspend relay
+passes**: queued reports are not lost and go out on the first pass after the link
+is restored.
 
-### Guardado y reanudación
+### Mission and contracts
 
-El progreso de la misión se guarda en `localStorage` con la clave
-`outpost-lunar.save.v1`. Al volver al título, la tarjeta de Artemis Ridge indica
-si la misión está en curso o completada y ofrece `CONTINUE MISSION` o
-`CONTINUE FREEPLAY`. Empezar una misión nueva con un guardado existente pide
-confirmación antes de sobrescribirlo. Ganar conserva la partida completada;
-perder una misión en curso borra su guardado, y una derrota posterior en
-freeplay no borra una misión ya ganada. La cola de informes y los cultivos de las
-bandejas también se guardan: al reanudar, la cuenta atrás y cada cultivo siguen
-donde estaban. Los guardados anteriores al cambio cargan con la cola y las
-bandejas vacías.
+- Scan **3 exterior sites** by standing still for 3 seconds. Each site shows its
+  state in the world: pending, sample ready, queued or report transmitted; the
+  current objective is highlighted and matches the HUD.
+- Take the samples to the **communications console** and send **3 reports**.
+  The signal takes **1.28 s each way** (**2.56 s** round trip), so the base
+  cannot be piloted in real time.
+- Sending a report leaves it **queued**: it does not count as sent until it is
+  transmitted. Relay passes open every **4 game hours** (at ticks 2, 6, 10…) and
+  all queued reports go out together. The console shows the queue and the
+  countdown to the next pass.
+- Victory comes when the third report is **transmitted**. If the third is queued,
+  the run stays in progress until the pass.
+- Four optional contracts with fixed conditions; they are claimed at the console.
+- On winning or losing, the **evaluation** shows five counters, a timeline and
+  what happened to the mission save.
 
-### Máquinas
+### Saving and resuming
+
+Mission progress is saved in `localStorage` under the key
+`outpost-lunar.save.v1`. On returning to the title, the Artemis Ridge card
+indicates whether the mission is in progress or completed and offers `CONTINUE
+MISSION` or `CONTINUE FREEPLAY`. Starting a new mission with an existing save
+asks for confirmation before overwriting it. Winning keeps the completed run;
+losing an in-progress mission deletes its save, and a later defeat in freeplay
+does not delete an already-won mission. The report queue and tray crops are saved
+too: on resuming, the countdown and each crop continue where they were. Saves
+from before the change load with the queue and trays empty.
+
+### Machines
 
 O₂ System · Water Recycler · Hydroponics · Solar Array · Battery Bank · Power
-Distributor · Repair Bench · Comms Console · Storm Shelter. Son nueve máquinas;
-cada una tiene dos mejoras (el banco de reparación tiene tres), coste en energía
-y tiempo de instalación. Toda mejora declara en el panel su beneficio y su
-contrapartida (por ejemplo, más O₂ a cambio de más agua): nunca es una decisión
-gratis. El panel muestra los números y su procedencia.
+Distributor · Repair Bench · Comms Console · Storm Shelter. There are nine
+machines; each has two upgrades (the repair bench has three), an energy cost and
+an installation time. Every upgrade declares its benefit and its trade-off in the
+panel (for example, more O₂ in exchange for more water): it is never a free
+decision. The panel shows the numbers and where they come from.
 
-La **hidroponía** funciona por bandejas: **3 bandejas**, un ciclo de **30 horas
-de juego** y **4 etapas** visibles. Plantar consume agua y energía y no entrega
-comida; al madurar, la **cosecha manual** rinde **10 de comida**, ajustados por
-las mejoras. La referencia real es una hoja verde de unos **28 días**: el panel
-declara esa compresión y el rendimiento esperado. Un cultivo maduro espera sin
-perder rendimiento, y el crecimiento solo avanza con la máquina encendida, sana
-y con energía. El resto de la comida son raciones y entregas de emergencia.
+**Hydroponics** works by trays: **3 trays**, a **30 game-hour** cycle and **4**
+visible stages. Planting consumes water and power and delivers no food; when
+ripe, **manual harvest** yields **10 food**, adjusted by upgrades. The real
+reference is a leafy green of about **28 days**: the panel declares that
+compression and the expected yield. A ripe crop waits without losing yield, and
+growth only advances while the machine is on, healthy and powered. The rest of
+the food is rations and emergency deliveries.
 
-### Glosario y terminología
+### Glossary and terminology
 
-El **glosario** se abre desde la pausa y desde el tutorial, sin abandonar la
-partida, y también desde la ayuda contextual del indicador de dosis, el panel de
-hidroponía y la consola de comunicaciones. Reúne 10 términos en inglés sencillo
-—dosis, mSv, microgravedad, día lunar, evento de partículas solares (SPE), rayos
-cósmicos galácticos (GCR), regolito, EVA, DSN e hidroponía— y cada entrada
-define los acrónimos que usa.
+The **glossary** opens from the pause menu and from the tutorial, without leaving
+the run, and also from the contextual help of the dose indicator, the hydroponics
+panel and the communications console. It gathers 10 terms in simple English —
+dose, mSv, microgravity, lunar day, solar particle event (SPE), galactic cosmic
+rays (GCR), regolith, EVA, DSN and hydroponics — and each entry defines the
+acronyms it uses.
 
-La interfaz llama **MISSION DAY** a los días de misión. La nota de compresión del
-reloj (un día lunar real dura 29,53 días terrestres) aparece en el HUD, en la
-pausa y en la entrada de día lunar del glosario.
+The interface labels mission days **MISSION DAY**. The clock compression note (a
+real lunar day lasts 29.53 Earth days) appears in the HUD, in the pause menu and
+in the lunar day glossary entry.
 
-## Datos NASA y honestidad
+## NASA data and honesty
 
-El juego separa explícitamente:
+The game explicitly separates:
 
-| Etiqueta | Significado |
+| Label | Meaning |
 | --- | --- |
-| **NASA ARCHIVE** | Fila anclada a un documento/evento NASA archivado y enlazado. |
-| **SIMULATED** | Valor de equilibrado del juego, no una medida. |
+| **NASA ARCHIVE** | Row anchored to an archived, linked NASA document/event. |
+| **SIMULATED** | Game balancing value, not a measurement. |
 
-Fuentes principales (detalle en [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md)):
+Main sources (details in [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md)):
 
 - **DONKI** — CME 2024-05-08T22:24:00-CME-001 (1130 km/s), SEP
-  2024-05-10T14:50:00-SEP-001, CME 2024-05-09T09:24:00-CME-001 y GST
+  2024-05-10T14:50:00-SEP-001, CME 2024-05-09T09:24:00-CME-001 and GST
   2024-05-10T15:00:00-GST-001 (Kp 9).
-- **LRO CRaTER** — dosis lunar de referencia (~0,197 mGy/día en órbita lunar;
-  ~0,318 mGy/día en superficie con LND). El juego normaliza estas tasas a un
-  presupuesto de dosis de 0–100 puntos para 300 horas y presenta cada punto como
-  **2,5 mSv**, con **250 mSv** como límite de misión (NASA-STD-3001); es una
-  abstracción educativa, no un modelo clínico.
-- **NASA BVAD** (NASA/TP-2015-218570/REV2) — 0,84 kg O₂, 0,62 kg de sólidos de
-  comida y 2,0 kg de agua potable por tripulante y día.
-- **NASA ECLSS / ISS OGS** — referencia de generación de O₂ y consumo de agua y
-  potencia.
+- **LRO CRaTER** — reference lunar dose (~0.197 mGy/day in lunar orbit;
+  ~0.318 mGy/day on the surface with LND). The game normalises these rates to a
+  0–100 point dose budget for 300 hours and presents each point as **2.5 mSv**,
+  with **250 mSv** as the mission limit (NASA-STD-3001); it is an educational
+  abstraction, not a clinical model.
+- **NASA BVAD** (NASA/TP-2015-218570/REV2) — 0.84 kg O₂, 0.62 kg food solids
+  and 2.0 kg drinking water per crew member per day.
+- **NASA ECLSS / ISS OGS** — reference for O₂ generation and water and power
+  consumption.
 
-La conversión a mSv, el retardo de la luz y la compresión del ciclo de cultivo
-se explican en [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md#modelos-con-unidad-real-y-sus-simplificaciones),
-separando el dato archivado de la simplificación del juego.
+The conversion to mSv, the light delay and the crop-cycle compression are
+explained in
+[`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md#modelos-con-unidad-real-y-sus-simplificaciones),
+separating the archived data from the game simplification.
 
-**Recursos oficiales del challenge:** el panel separa **Official challenge
-resource** (DONKI) de **Additional NASA sources** (LRO CRaTER/LND, NASA BVAD,
-ECLSS/ISS OGS) y **Simulated**. La especificación y la tarea pendiente para
-mostrar esa división en el panel están en
+**Official challenge resources:** the panel separates **Official challenge
+resource** (DONKI) from **Additional NASA sources** (LRO CRaTER/LND, NASA BVAD,
+ECLSS/ISS OGS) and **Simulated**. The specification and the pending task to show
+that split in the panel are in
 [`docs/DATA-SOURCES.md#recursos-oficiales-del-challenge-y-fuentes-externas`](docs/DATA-SOURCES.md#recursos-oficiales-del-challenge-y-fuentes-externas).
 
-El juego **no hace peticiones de red externas en runtime**. Los modelos GLB se
-sirven desde el propio build y los enlaces se abren solo al hacer clic. No es un
-producto oficial de NASA ni está avalado por NASA.
+The game **makes no external network requests at runtime**. GLB models are served
+from the build itself and links only open when clicked. It is not an official
+NASA product and is not endorsed by NASA.
 
-## Estructura del proyecto
+## Project structure
 
 ```text
 MindSpace-ThreeJs/
 ├── docs/
-│   ├── designs/junior-astronauta-outpost-lunar.md  # documento original
-│   ├── ADAPTATION.md      # cómo se tradujo el diseño Godot a Three.js
-│   ├── DATA-SOURCES.md    # fuentes NASA y política de escala
-│   ├── PLAYTEST.md        # checklist de pruebas
+│   ├── designs/junior-astronauta-outpost-lunar.md  # original document
+│   ├── ADAPTATION.md      # how the Godot design was translated to Three.js
+│   ├── DATA-SOURCES.md    # NASA sources and scale policy
+│   ├── PLAYTEST.md        # test checklist
 │   └── screenshots/
 ├── public/                # favicon
 ├── scripts/
-│   ├── audit.mjs          # DataAudit headless
-│   ├── balance.mjs        # simulación headless de políticas
-│   ├── smoke.mjs          # Playwright (opcional)
+│   ├── audit.mjs          # headless DataAudit
+│   ├── balance.mjs        # headless policy simulation
+│   ├── smoke.mjs          # Playwright (optional)
 │   └── models/
-│       └── build_models.py  # genera los GLB con Blender
+│       └── build_models.py  # generates the GLBs with Blender
 ├── src/
-│   ├── assets/models/     # rover, lander y astronauta (GLB)
+│   ├── assets/models/     # rover, lander and astronaut (GLB)
 │   ├── core/
-│   │   ├── sim.js         # GameSim: tick determinista
-│   │   ├── event-log.js   # ledger append-only
-│   │   ├── evaluation.js  # contadores, nota y timeline
-│   │   ├── audit.js       # validación de datos
-│   │   └── audio.js       # 5 SFX sintetizados + viento
-│   ├── data/              # economía, máquinas, eventos, contratos, POIs,
-│   │                      # strings, fuentes, glosario y presets
-│   ├── world/             # escena, base, exterior, astronauta, modelos 3D
-│   ├── ui/                # HUD, paneles, consola, glosario, pantallas,
-│   │                      # debug y CSS
-│   └── main.js            # máquina de estados y bucle
-├── tests/                 # sim, datos y evaluación (node:test)
+│   │   ├── sim.js         # GameSim: deterministic tick
+│   │   ├── event-log.js   # append-only ledger
+│   │   ├── evaluation.js  # counters, grade and timeline
+│   │   ├── audit.js       # data validation
+│   │   └── audio.js       # 5 synthesised SFX + wind
+│   ├── data/              # economy, machines, events, contracts, POIs,
+│   │                      # strings, sources, glossary and presets
+│   ├── world/             # scene, base, exterior, astronaut, 3D models
+│   ├── ui/                # HUD, panels, console, glossary, screens,
+│   │                      # debug and CSS
+│   └── main.js            # state machine and loop
+├── tests/                 # sim, data and evaluation (node:test)
 ├── index.html
 ├── package.json
 └── vite.config.js
 ```
 
-El contenido del glosario vive en `src/data/glossary.js` y su modal en
+The glossary content lives in `src/data/glossary.js` and its modal in
 `src/ui/glossary.js`.
 
-## Desarrollo y validación
+## Development and validation
 
 ```bash
-npm run audit     # valida ids, rangos, referencias y procedencia
-npm test          # suite de simulación, datos, guardado y evaluación
-npm run build     # build de Vite
+npm run audit     # validates ids, ranges, references and provenance
+npm test          # simulation, data, save and evaluation suite
+npm run build     # Vite build
 npm run check     # audit + tests + build
 ```
 
-### Modelos 3D
+### 3D models
 
-El rover, el lander y la astronauta son GLB de autoría propia, modelados con
-Blender. Se generan de forma reproducible (unidades en metros, low-poly, sin
-texturas externas):
+The rover, the lander and the astronaut are self-authored GLBs, modelled with
+Blender. They are generated reproducibly (units in metres, low-poly, no external
+textures):
 
 ```bash
-npm run models    # requiere Blender en el PATH; tarda unos segundos
+npm run models    # requires Blender on the PATH; takes a few seconds
 ```
 
-El script `scripts/models/build_models.py` reconstruye
-`src/assets/models/*.glb` y deja previews en `/tmp/opencode`. El juego carga los
-tres al arrancar; si alguno falta o está corrupto, usa la geometría procedural
-de respaldo y sigue jugando. Las máquinas y el resto de props continúan siendo
-procedurales.
+The `scripts/models/build_models.py` script rebuilds
+`src/assets/models/*.glb` and leaves previews in `/tmp/opencode`. The game loads
+all three at startup; if any is missing or corrupt, it falls back to procedural
+geometry and keeps playing. The machines and the rest of the props remain
+procedural.
 
-El **DataAudit** corre también al arrancar en desarrollo y aparece en el overlay
-`F1`. Valida:
+**DataAudit** also runs at startup in development and appears in the `F1`
+overlay. It validates:
 
-- ids únicos de máquinas, eventos, contratos y POIs;
-- referencias existentes (targets, eventos, fuentes);
-- rangos de recursos y efectos;
-- fuentes `real_data` con URL y fecha ISO;
-- invariantes de los presets: se cargan y se simulan 4 ticks para rechazar
-  estados que nazcan en cascada de muerte.
+- unique ids for machines, events, contracts and POIs;
+- existing references (targets, events, sources);
+- resource and effect ranges;
+- `real_data` sources with URL and ISO date;
+- preset invariants: they are loaded and simulated for 4 ticks to reject states
+  that are born in a death cascade.
 
-### Smoke test con Playwright (opcional)
+### Playwright smoke test (optional)
 
 ```bash
 npx playwright install chromium
-PLAYWRIGHT_CHROMIUM=/ruta/a/chrome node scripts/smoke.mjs
+PLAYWRIGHT_CHROMIUM=/path/to/chrome node scripts/smoke.mjs
 ```
 
-El script abre el juego, recorre título, intro, tutorial y partida, captura las
-pantallas clave y comprueba que no hay errores de página. En esta máquina se usó
-el Chromium ya cacheado; la variable de entorno es opcional.
+The script opens the game, walks through title, intro, tutorial and a run,
+captures the key screens and checks that there are no page errors. On this
+machine the already-cached Chromium was used; the environment variable is
+optional.
 
-## Documentación
+## Documentation
 
-- **Diseño original**: [`docs/designs/junior-astronauta-outpost-lunar.md`](docs/designs/junior-astronauta-outpost-lunar.md)
-- **Adaptación**: [`docs/ADAPTATION.md`](docs/ADAPTATION.md)
-- **Datos**: [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md)
-- **Pruebas**: [`docs/PLAYTEST.md`](docs/PLAYTEST.md)
+- **Original design**: [`docs/designs/junior-astronauta-outpost-lunar.md`](docs/designs/junior-astronauta-outpost-lunar.md)
+- **Adaptation**: [`docs/ADAPTATION.md`](docs/ADAPTATION.md)
+- **Data**: [`docs/DATA-SOURCES.md`](docs/DATA-SOURCES.md)
+- **Testing**: [`docs/PLAYTEST.md`](docs/PLAYTEST.md)
+- **Evaluator guide**: [`EVALUATORS.md`](EVALUATORS.md)
 
-## Créditos
+## Credits
 
-- Código y contenido original de esta adaptación: proyecto **MindSpace /
-  Outpost Lunar**.
-- Motor: [Three.js](https://threejs.org/).
+- Code and original content of this adaptation: the **MindSpace / Outpost
+  Lunar** project.
+- Engine: [Three.js](https://threejs.org/).
 - Build: [Vite](https://vite.dev/).
-- Modelos 3D (rover, lander, astronauta): autoría propia, generados con
-  [Blender](https://www.blender.org/) desde `scripts/models/build_models.py`.
-- Tipografías autohospedadas: [Fontsource](https://fontsource.org/)
-  (Orbitron, Rajdhani), licencias SIL OFL.
-- Datos: NASA CCMC DONKI, LRO CRaTeR, NASA BVAD/ECLSS. Enlaces y fechas en el
-  panel **Data Sources** del propio juego.
+- 3D models (rover, lander, astronaut): self-authored, generated with
+  [Blender](https://www.blender.org/) from `scripts/models/build_models.py`.
+- Self-hosted fonts: [Fontsource](https://fontsource.org/) (Orbitron, Rajdhani),
+  SIL OFL licences.
+- Data: NASA CCMC DONKI, LRO CRaTER, NASA BVAD/ECLSS. Links and dates in the
+  game's own **Data Sources** panel.
 
-> Juego educativo independiente inspirado en el desafío *Junior Astronaut
-> Mission Trainer* de NASA Space Apps. No es un producto oficial de NASA.
+> Independent educational game inspired by the *Junior Astronaut Mission
+> Trainer* challenge from NASA Space Apps. It is not an official NASA product.
