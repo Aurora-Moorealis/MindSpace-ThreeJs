@@ -58,8 +58,9 @@ function makeCraterTexture() {
 }
 
 export class ExteriorBuilder {
-  constructor() {
+  constructor(models = null) {
     this.group = new THREE.Group();
+    this.models = models;
     this.colliders = [];
     this.dust = null;
     this.animated = [];
@@ -205,6 +206,29 @@ export class ExteriorBuilder {
   }
 
   rover() {
+    // Authored GLB (see scripts/models/build_models.py). The procedural version
+    // below stays as a fallback for a failed asset load.
+    if (this.models?.rover) {
+      const group = this.models.rover.clone(true);
+      group.position.set(7.2, -0.08, 20.0);
+      group.rotation.y = -0.5;
+      this.group.add(group);
+      this.addCollider(7.2, 20.0, 3.6, 3.4);
+      const dish = group.getObjectByName('RoverDish');
+      if (dish) {
+        this.animated.push(() => {
+          dish.rotation.y = Math.sin(performance.now() * 0.0004) * 0.06;
+        });
+      }
+      const beacon = group.getObjectByName('RoverBeacon');
+      if (beacon) {
+        this.animated.push(() => {
+          beacon.visible = Math.sin(performance.now() * 0.003) > 0.5;
+        });
+      }
+      return;
+    }
+
     const group = new THREE.Group();
     const chassis = rounded(2.6, 0.45, 1.35, 0.08, 0xd8d8d4);
     chassis.position.y = 0.62;
@@ -251,6 +275,28 @@ export class ExteriorBuilder {
   }
 
   lander() {
+    // Authored GLB, with the same procedural fallback contract as the rover.
+    if (this.models?.lander) {
+      const group = this.models.lander.clone(true);
+      group.position.set(-38, -0.1, 47);
+      group.rotation.y = 0.7;
+      this.group.add(group);
+      this.addCollider(-38, 47, 6.4, 6.0);
+      const dish = group.getObjectByName('LanderDish');
+      if (dish) {
+        this.animated.push(() => {
+          dish.rotation.y = Math.sin(performance.now() * 0.00032) * 0.08;
+        });
+      }
+      const beacon = group.getObjectByName('LanderBeacon');
+      if (beacon) {
+        this.animated.push(() => {
+          beacon.visible = Math.sin(performance.now() * 0.003 + 1.2) > 0.4;
+        });
+      }
+      return;
+    }
+
     const group = new THREE.Group();
     const body = cylinder(1.5, 1.7, 2.0, 8, 0xbfc2c4);
     body.position.y = 2.1;
@@ -419,14 +465,20 @@ export class ExteriorBuilder {
     for (const fn of this.animated) fn(dt);
     if (this.dust) {
       const attr = this.dust.points.geometry.attributes.position;
+      const arr = attr.array;
       const speeds = this.dust.speeds;
-      for (let i = 0; i < attr.count; i += 1) {
-        let x = attr.getX(i) + speeds[i] * dt * (0.6 + storm * 2.4);
-        let y = attr.getY(i) + Math.sin(performance.now() * 0.0006 + i) * dt * 0.08;
+      const count = speeds.length;
+      const speedMul = dt * (0.6 + storm * 2.4);
+      const timeBase = performance.now() * 0.0006;
+      const yStep = dt * 0.08;
+      for (let i = 0; i < count; i += 1) {
+        const idx = i * 3;
+        let x = arr[idx] + speeds[i] * speedMul;
+        let y = arr[idx + 1] + Math.sin(timeBase + i) * yStep;
         if (x > 54) x = -54;
         if (y > 6) y = 0.1;
-        attr.setX(i, x);
-        attr.setY(i, y);
+        arr[idx] = x;
+        arr[idx + 1] = y;
       }
       attr.needsUpdate = true;
       this.dust.mat.opacity = 0.22 + storm * 0.5;
@@ -449,6 +501,6 @@ export class ExteriorBuilder {
   }
 }
 
-export function buildExterior() {
-  return new ExteriorBuilder().build();
+export function buildExterior(models = null) {
+  return new ExteriorBuilder(models).build();
 }

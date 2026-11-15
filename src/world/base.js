@@ -693,8 +693,7 @@ export class BaseBuilder {
     this.pointLight(-21.5, -9.25, { color: 0xffd2a0, intensity: 42 });
     this.pointLight(-5, -9.25, { color: 0xd0ffd6, intensity: 38 });
     this.pointLight(15, -9.25, { color: 0xffcf8a, intensity: 38 });
-    this.pointLight(-18.5, 9.25, { color: 0xb9d4ff, intensity: 40 });
-    this.pointLight(-25.0, 10.0, { color: 0x9fd4ff, intensity: 24, distance: 10 });
+    this.pointLight(-18.5, 9.25, { color: 0xb9d4ff, intensity: 40, distance: 15 });
     this.pointLight(17, 9.25, { color: 0xffc38a, intensity: 42 });
     this.pointLight(0, 4.25, { color: 0xa8e8ff, intensity: 30, distance: 11 });
     this.pointLight(0, 11, { color: 0xffc27a, intensity: 34, distance: 12 });

@@ -18,6 +18,7 @@ import './ui/styles.css';
 import * as THREE from 'three';
 import { Stage } from './world/scene.js';
 import { World } from './world/world.js';
+import { loadWorldModels } from './world/models.js';
 import { ROOMS } from './world/base.js';
 import { GameSim } from './core/sim.js';
 import { applyRecord, buildRecord, clearSave, readSave, writeSave } from './core/save-game.js';
@@ -35,6 +36,7 @@ import { DebugOverlay } from './ui/debug.js';
 import { loadDemoPreset } from './data/demo-states.js';
 import { MACHINES } from './data/machines.js';
 import { POIS } from './data/pois.js';
+import { MINERALS, NASA_PROTOTYPE_TRUCK } from './data/minerals.js';
 import { STRINGS } from './data/strings.js';
 import { ECONOMY } from './data/economy.js';
 
@@ -74,6 +76,7 @@ const app = {
   uiTimer: 0,
   panelTimer: 0,
   debugVisible: false,
+  selectedSlot: 0,
 };
 
 const SPRINT_MULTIPLIER = 1.6;
@@ -181,7 +184,15 @@ async function boot() {
     stormOverlay.className = 'storm-vignette';
     appEl.append(stormOverlay);
 
-    world = new World(stage.scene, sim);
+    const loadingDetail = loading.querySelector('.loading-detail');
+    const models = await Promise.race([
+      loadWorldModels((done, total) => {
+        if (loadingDetail) loadingDetail.textContent = `LOADING 3D ASSETS · ${done} / ${total}`;
+      }),
+      wait(6000).then(() => null),
+    ]);
+
+    world = new World(stage.scene, sim, models);
     for (const light of world.base.lights ?? []) stage.registerInteriorLight(light);
     world.astronaut.setPosition(app.player.x, app.player.z);
 
@@ -237,6 +248,7 @@ function setupUI(screenLayer, drawerLayer) {
     onSound: toggleMute,
     onSource: openSources,
     onGlossary: openGlossary,
+    onSlot: selectInventorySlot,
   });
 
   notifications = new NotificationCenter({
@@ -468,9 +480,16 @@ function setupInput() {
       }
       return;
     }
-    if (['Digit1', 'Digit2', 'Digit3'].includes(event.code) && app.phase === 'game') {
+    if (
+      ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4', 'Numpad5'].includes(
+        event.code
+      ) &&
+      app.phase === 'game' &&
+      !app.panel &&
+      !hasBlockingModal()
+    ) {
       event.preventDefault();
-      setSpeed(Number(event.code.slice(-1)) === 1 ? 1 : Number(event.code.slice(-1)) === 2 ? 5 : 10);
+      selectInventorySlot(Number(event.code.slice(-1)) - 1);
       return;
     }
     if (event.code === 'Enter' || event.code === 'Space') {
@@ -508,6 +527,22 @@ function setupInput() {
       if (app.phase === 'game' && !app.paused && !app.panel) app.keys.add(event.code);
       return;
     }
+    if (event.code === 'KeyF') {
+      if (event.repeat) return;
+      if (app.phase === 'game' && !app.paused && !app.panel && !hasBlockingModal()) {
+        event.preventDefault();
+        handleRefineSelected();
+      }
+      return;
+    }
+    if (event.code === 'KeyQ') {
+      if (event.repeat) return;
+      if (app.phase === 'game' && !app.paused && !app.panel && !hasBlockingModal()) {
+        event.preventDefault();
+        handleDropSelected();
+      }
+      return;
+    }
     if (MOVEMENT_CODES.has(event.code)) {
       if (app.phase === 'game' && !app.paused && !app.panel) {
         event.preventDefault();
@@ -519,6 +554,21 @@ function setupInput() {
   window.addEventListener('keyup', (event) => {
     app.keys.delete(event.code);
   });
+
+  window.addEventListener(
+    'wheel',
+    (event) => {
+      if (app.phase === 'game' && !app.paused && !app.panel && !hasBlockingModal()) {
+        if (event.shiftKey) {
+          stage?.adjustZoom(event.deltaY > 0 ? 2 : -2);
+        } else if (event.deltaY !== 0) {
+          const step = event.deltaY > 0 ? 1 : 4;
+          selectInventorySlot((app.selectedSlot + step) % 5);
+        }
+      }
+    },
+    { passive: true }
+  );
 
   window.addEventListener('pagehide', () => {
     if (app.phase === 'game') autosave();
@@ -548,6 +598,14 @@ function hasBlockingModal() {
       evaluationScreen?.isOpen() ||
       app.transitioning
   );
+}
+
+function selectInventorySlot(index) {
+  const clamped = ((index % 5) + 5) % 5;
+  if (clamped === app.selectedSlot) return;
+  app.selectedSlot = clamped;
+  hud?.setSelectedSlot(clamped);
+  audio?.play('click');
 }
 
 function setSpeed(value) {
@@ -687,6 +745,59 @@ function handleInteract() {
     startScan(poi);
     return;
   }
+  if (nearest.type === 'mineral') {
+    const equipped = sim.state.hotbar?.[app.selectedSlot]?.id === 'pickaxe';
+    if (!equipped) {
+      notifications.toast({
+        kind: 'warn',
+        title: 'Equip Lunar Pickaxe',
+        body: 'Select Slot 1 (key 1 or scroll wheel) to equip the pickaxe before mining.',
+        icon: 'pickaxe',
+        duration: 3200,
+      });
+      audio.play('error');
+      return;
+    }
+    startMining(nearest);
+    return;
+  }
+  if (nearest.type === 'prototype') {
+    notifications.toast({
+      kind: 'info',
+      title: NASA_PROTOTYPE_TRUCK.name,
+      body: `${NASA_PROTOTYPE_TRUCK.nasaFact} (${NASA_PROTOTYPE_TRUCK.specs[2]})`,
+      sourceId: NASA_PROTOTYPE_TRUCK.source,
+      icon: 'truck',
+      duration: 7000,
+    });
+    audio.play('click');
+    return;
+  }
+  if (nearest.id === 'ice_melter') {
+    const result = sim.meltIce();
+    if (!result.ok) {
+      notifications.toast({
+        kind: 'warn',
+        title: 'No Water Ice in inventory',
+        body: 'Equip the Pickaxe (1) and mine Water Ice veins outside to feed the greenhouse.',
+        icon: 'water',
+        duration: 3600,
+      });
+      audio.play('error');
+      return;
+    }
+    notifications.toast({
+      kind: 'good',
+      title: 'Ice Melter active → Plants irrigated',
+      body: 'Melted 1 × Water Ice into liquid H₂O (+12% Water, +4% Food to Hydroponics).',
+      sourceId: 'lcross_ice',
+      icon: 'water',
+      duration: 4800,
+    });
+    audio.play('success');
+    refreshHud();
+    return;
+  }
   if (nearest.id === 'comms_console') {
     openComms();
     return;
@@ -696,6 +807,74 @@ function handleInteract() {
     return;
   }
   openMachinePanel(nearest.id);
+}
+
+function startMining(vein) {
+  const mineral = MINERALS[vein.mineralId];
+  if (!mineral) return;
+  app.scan = {
+    type: 'mine',
+    targetId: vein.id,
+    mineralId: mineral.id,
+    progress: 0,
+    duration: mineral.mineSeconds,
+    startedAt: performance.now(),
+    pausedMs: 0,
+    pausedAt: null,
+    label: `MINING ${mineral.name.toUpperCase()} (${mineral.formula}) · MOHS ${mineral.mohs}`,
+  };
+  audio.play('scan');
+}
+
+function handleRefineSelected() {
+  const result = sim.refineHotbarSlot(app.selectedSlot);
+  if (!result.ok) {
+    notifications.toast({
+      kind: 'info',
+      title: 'No mineral in selected slot',
+      body: 'Select a slot with mined ore (2–5) to refine it for ISRU resources.',
+      icon: 'mineral',
+      duration: 2800,
+    });
+    audio.play('error');
+    return;
+  }
+  notifications.toast({
+    kind: 'good',
+    title: `Refined ${result.mineral.name} (${result.mineral.formula})`,
+    body: `ISRU yield applied: ${result.mineral.bonus.label}.`,
+    sourceId: result.mineral.source,
+    icon: result.mineral.id === 'water_ice' ? 'water' : 'mineral',
+    duration: 4200,
+  });
+  audio.play('success');
+  refreshHud();
+}
+
+function handleDropSelected() {
+  const result = sim.dropHotbarSlot(app.selectedSlot);
+  if (!result.ok) {
+    if (result.reason === 'locked_tool') {
+      notifications.toast({
+        kind: 'warn',
+        title: 'Cannot drop Lunar Pickaxe',
+        body: 'Select an item in slots 2–5 to drop it with Q.',
+        icon: 'pickaxe',
+        duration: 2600,
+      });
+      audio.play('error');
+    }
+    return;
+  }
+  notifications.toast({
+    kind: 'info',
+    title: `Dropped ${result.mineral?.name ?? result.droppedId}`,
+    body: result.remainingInSlot > 0 ? `${result.remainingInSlot} left in slot.` : 'Hotbar slot freed.',
+    icon: 'mineral',
+    duration: 2400,
+  });
+  audio.play('click');
+  refreshHud();
 }
 
 function startScan(poi) {
@@ -743,13 +922,14 @@ function startCleanTask() {
 function cancelScan(reason) {
   if (!app.scan) return;
   const wasClean = app.scan.type === 'clean';
+  const wasMine = app.scan.type === 'mine';
   app.scan = null;
   if (reason !== 'completed') {
     notifications.toast({
       kind: 'info',
-      title: wasClean ? 'Cleaning interrupted' : 'Scan cancelled',
+      title: wasMine ? 'Mining interrupted' : wasClean ? 'Cleaning interrupted' : 'Scan cancelled',
       body: 'Stay still and keep the target in range while the progress bar fills.',
-      icon: 'scan',
+      icon: wasMine ? 'pickaxe' : 'scan',
       duration: 3000,
     });
   }
@@ -762,6 +942,28 @@ function completeScanTask() {
   if (task.type === 'scan') {
     const result = sim.completeScan(task.targetId);
     if (!result.ok) actionError(result);
+  } else if (task.type === 'mine') {
+    const result = sim.mineMineral(task.mineralId);
+    if (result.ok) {
+      notifications.toast({
+        kind: 'good',
+        title: `+1 ${result.mineral.name} (${result.mineral.formula})`,
+        body: `${result.mineral.nasaFact} Stored in slot ${result.slotIndex + 1} (×${result.count} total).`,
+        sourceId: result.mineral.source,
+        icon: result.mineral.id === 'water_ice' ? 'water' : 'mineral',
+        duration: 5500,
+      });
+      audio.play('success');
+    } else if (result.reason === 'hotbar_full') {
+      notifications.toast({
+        kind: 'warn',
+        title: 'Hotbar full',
+        body: 'All 5 slots are full. Press Q on a mineral slot to drop an item (or F to refine).',
+        icon: 'alert',
+        duration: 4500,
+      });
+      audio.play('error');
+    }
   } else {
     const result = sim.cleanSolarArray();
     if (!result.ok) actionError(result);
@@ -1340,7 +1542,7 @@ function updateObjective(force = false) {
   });
 }
 
-function refreshHud() {
+function refreshHud(cachedNearest = undefined) {
   if (!hud || !sim) return;
   const roomId = world.getRoomAt(app.player.x, app.player.z);
   let zoneLabel = 'HABITAT';
@@ -1348,9 +1550,14 @@ function refreshHud() {
   else if (app.inShelter && sim.state.shelterLocked) zoneLabel = 'STORM SHELTER';
   else zoneLabel = STRINGS[ROOMS[roomId]?.key] ?? 'HABITAT';
   const suppress = app.phase !== 'game' || app.paused || app.panel;
-  const nearest = suppress ? null : world.getNearestInteractable(app.player, 3.6);
+  const nearest = suppress
+    ? null
+    : cachedNearest !== undefined
+      ? cachedNearest
+      : world.getNearestInteractable(app.player, 3.6);
+  const pickaxeEquipped = sim.state.hotbar?.[app.selectedSlot]?.id === 'pickaxe';
   app.nearest = nearest;
-  app.interaction = nearest ? world.describeInteraction(nearest) : null;
+  app.interaction = nearest ? world.describeInteraction(nearest, { pickaxeEquipped }) : null;
   hud.update(sim, {
     speed: app.speed,
     presence: sim.presence,
@@ -1361,6 +1568,7 @@ function refreshHud() {
       : null,
     demo: app.demo,
     objective: app.objective,
+    selectedSlot: app.selectedSlot,
   });
 }
 
@@ -1371,13 +1579,13 @@ function updateScanAndInteractions(dt) {
       cancelScan('panel');
     } else {
       const targetPos =
-        app.scan.type === 'scan'
+        app.scan.type === 'scan' || app.scan.type === 'mine'
           ? world.getInteractable(app.scan.targetId)?.position
           : world.getMachineWorldPosition('solar_array');
       const distance = targetPos
         ? Math.hypot(app.player.x - targetPos.x, app.player.z - targetPos.z)
         : 999;
-      const limit = app.scan.type === 'scan' ? 4.3 : 5.4;
+      const limit = app.scan.type === 'scan' || app.scan.type === 'mine' ? 4.3 : 5.4;
       const moving = hasMovementInput();
       if (moving) {
         cancelScan('moved');
@@ -1418,8 +1626,8 @@ function updateGameplay(dt, rawDt) {
       dz /= len;
       const wantsSprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
       const speed = 5.0 * sim.stats.movement_speed * (wantsSprint ? SPRINT_MULTIPLIER : 1);
-      const total = speed * rawDt;
-      const steps = Math.max(1, Math.ceil(rawDt / 0.05));
+      const total = speed * dt;
+      const steps = Math.max(1, Math.ceil(dt / 0.05));
       for (let i = 0; i < steps; i += 1) {
         world.move(app.player, (dx * total) / steps, (dz * total) / steps, 0.55);
       }
@@ -1434,6 +1642,7 @@ function updateGameplay(dt, rawDt) {
 
   world.astronaut.setPosition(app.player.x, app.player.z);
   updateScanAndInteractions(dt);
+  if (app.scan) hud?.updateScan?.({ label: app.scan.label, progress: app.scan.progress });
 
   if (!app.paused) {
     app.tickAccum += rawDt * app.speed;
@@ -1456,7 +1665,11 @@ function updateGameplay(dt, rawDt) {
   updateObjective();
   const storm = sim.getStorm();
   const stormVisual = storm ? Math.min(1, Math.max(0, storm.intensityNow / 18)) : 0;
-  stormOverlay.style.opacity = (stormVisual * 0.85).toFixed(2);
+  const stormOpacity = (stormVisual * 0.85).toFixed(2);
+  if (app.lastStormOpacity !== stormOpacity) {
+    app.lastStormOpacity = stormOpacity;
+    stormOverlay.style.opacity = stormOpacity;
+  }
   stage.setEnvironment({
     time: app.time,
     storm: stormVisual,
@@ -1468,10 +1681,13 @@ function updateGameplay(dt, rawDt) {
   const suppress = app.phase !== 'game' || app.paused || app.panel;
   const nearest = suppress ? null : world.getNearestInteractable(app.player, 3.6);
   app.nearest = nearest;
-  world.update(rawDt, sim, {
+  world.update(dt, sim, {
     nearest,
     scanProgress: app.scan?.progress ?? 0,
     scanTarget: app.scan?.type === 'scan' ? app.scan.targetId : null,
+    mineProgress: app.scan?.progress ?? 0,
+    mineTarget: app.scan?.type === 'mine' ? app.scan.targetId : null,
+    pickaxeEquipped: sim.state.hotbar?.[app.selectedSlot]?.id === 'pickaxe',
     moving,
     sprinting,
     outside: app.outside,
@@ -1479,7 +1695,7 @@ function updateGameplay(dt, rawDt) {
     storm: stormVisual,
   });
 
-  stage.updateCamera(rawDt, {
+  stage.updateCamera(dt, {
     target: cameraTarget.set(app.player.x, 0.9, app.player.z),
     outside: app.outside,
   });
@@ -1487,7 +1703,7 @@ function updateGameplay(dt, rawDt) {
   app.uiTimer += rawDt;
   if (app.uiTimer >= 0.1) {
     app.uiTimer = 0;
-    refreshHud();
+    refreshHud(nearest);
   }
   app.panelTimer += rawDt;
   if (app.panelTimer >= 0.5) {

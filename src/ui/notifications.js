@@ -435,30 +435,46 @@ export class NotificationCenter {
     const source = sourceId ? getSource(sourceId) : null;
     const node = document.createElement('div');
     node.className = `toast ${kind}`;
+    const hasLongBody = Boolean(body && body.length > 72);
     node.innerHTML = `
-      <div class="toast-icon">${icon(iconName, 18)}</div>
+      <div class="toast-icon">${icon(iconName, 16)}</div>
       <div class="toast-copy">
         <div class="toast-title">${escapeHtml(title)}</div>
         <div class="toast-body">${escapeHtml(body)}</div>
-        ${source ? `<div class="toast-source">${sourceBadge(source, { short: true })}</div>` : ''}
+        <div class="toast-footer">
+          ${hasLongBody ? '<button class="toast-more" type="button">See more</button>' : ''}
+          ${source ? `<div class="toast-source">${sourceBadge(source, { short: true })}</div>` : ''}
+        </div>
       </div>
     `;
-    node.addEventListener('click', () => {
-      node.classList.add('leaving');
-      setTimeout(() => node.remove(), 220);
-      this.toastCount = Math.max(0, this.toastCount - 1);
-    });
-    this.toastLayer.append(node);
-    this.toastCount += 1;
-    requestAnimationFrame(() => node.classList.add('visible'));
-    setTimeout(() => {
-      if (!node.isConnected) return;
+    let timer = null;
+    const dismiss = () => {
+      if (!node.isConnected || node.classList.contains('leaving')) return;
+      clearTimeout(timer);
       node.classList.add('leaving');
       setTimeout(() => {
         node.remove();
         this.toastCount = Math.max(0, this.toastCount - 1);
       }, 220);
-    }, duration);
+    };
+    const scheduleDismiss = (ms) => {
+      clearTimeout(timer);
+      timer = setTimeout(dismiss, ms);
+    };
+    const moreBtn = node.querySelector('.toast-more');
+    if (moreBtn) {
+      moreBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const expanded = node.classList.toggle('expanded');
+        moreBtn.textContent = expanded ? 'See less' : 'See more';
+        scheduleDismiss(expanded ? Math.max(duration, 14000) : 4500);
+      });
+    }
+    node.addEventListener('click', dismiss);
+    this.toastLayer.append(node);
+    this.toastCount += 1;
+    requestAnimationFrame(() => node.classList.add('visible'));
+    scheduleDismiss(duration);
     return node;
   }
 
