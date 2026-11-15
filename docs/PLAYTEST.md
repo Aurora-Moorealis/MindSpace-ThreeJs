@@ -102,6 +102,9 @@ con `sim.tick()` y espera de más en las transiciones.
 - [x] El overlay F1 muestra el estado y el audit.
 - [x] Los enlaces a NASA abren en pestaña nueva; no hay HTTP al cargar.
 - [x] Autopause al perder foco (los enlaces externos pausan la partida).
+- [ ] **Pendiente:** el panel Data Sources declara qué recursos del tab oficial
+      usa el juego y cuáles no (DONKI sí; OSDR, RadLab, Mars Trek y CSA no).
+      Ver [`DATA-SOURCES.md#recursos-oficiales-del-challenge-estado-y-pendiente`](DATA-SOURCES.md#recursos-oficiales-del-challenge-estado-y-pendiente).
 
 ## Problemas conocidos
 

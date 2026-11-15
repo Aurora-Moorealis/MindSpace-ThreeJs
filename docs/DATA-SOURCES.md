@@ -20,6 +20,77 @@ tuning del juego. Esta política se implementa en:
 El juego **no descarga datos en runtime**. Los enlaces del panel se abren solo
 cuando el jugador hace clic (`target="_blank"`).
 
+## Recursos oficiales del challenge (estado y pendiente)
+
+> **Snapshot:** página oficial consultada el **2026-11-15**:
+> <https://www.spaceappschallenge.org/2026/challenges/junior-astronaut-mission-trainer/?tab=resources>
+>
+> La propia página avisa: *“More resources may be added before the hackathon
+> begins.”* Antes de un envío, volver a comprobarla.
+
+El tab **Resources** del challenge lista estos recursos. Esta es la comparación
+honesta con lo que usa el juego:
+
+| Recurso oficial | ¿Lo usa el juego? | Detalle |
+| --- | --- | --- |
+| **NASA Open APIs** — <https://api.nasa.gov/> | **No en runtime** | El juego es offline y no hace HTTP. No se llama a `api.nasa.gov`; los datos DONKI se empaquetaron archivados. |
+| **DONKI** — <https://ccmc.gsfc.nasa.gov/tools/DONKI/> | **Sí** | Base de las 6 ventanas de radiación. Se citan 4 eventos archivados: CME `2024-05-08T22:24:00-CME-001` (1130 km/s), SEP `2024-05-10T14:50:00-SEP-001`, CME `2024-05-09T09:24:00-CME-001` (1330 km/s) y GST `2024-05-10T15:00:00-GST-001` (Kp 9). Filas en `src/data/sources.js` y `src/data/events.js`; enlaces en el panel **Data Sources**. |
+| **OSDR** — <https://osdr.nasa.gov/bio/repo/> | **No** | No se usa. Sería una referencia de biología/salud humana, no una cifra de gameplay. |
+| **RadLab (OSDR)** — <https://visualization.osdr.nasa.gov/radlab/gui/data-api/> | **No** | Es dosimetría de la **ISS**. Para la Luna se usa **LRO CRaTER / LND**, que es la fuente correcta para este escenario. |
+| **Mars Trek** — <https://trek.nasa.gov/mars/> | **No** | El juego es lunar; el diseño descarta Marte en esta edición. |
+| **CSA — STEM/youth resources** — <https://www.asc-csa.gc.ca/eng/youth-educators/resources-stem-and-youth-organizations.asp> | **No** | No se usa. |
+| **CSA — Food production on the Moon** — <https://www.asc-csa.gc.ca/eng/youth-educators/toolkits/food-production/> | **No** | La hidroponía se basa en BVAD; este toolkit podría citarse como nota educativa en el futuro. |
+
+Además, el proyecto usa **fuentes NASA que no están en ese tab**:
+
+- **LRO CRaTER / LND** — dosis lunar de referencia.
+- **NASA BVAD** (`NASA/TP-2015-218570/REV2`) — O₂, agua y comida por tripulante/día.
+- **NASA ECLSS / ISS OGS** — ratios de soporte vital y potencia.
+
+### Qué muestra el juego hoy (y qué falta)
+
+El panel **Data Sources** del juego ya muestra las fuentes que se usan, con
+`NASA ARCHIVE` / `SIMULATED`, URL y fecha. **No** compara el proyecto con el tab
+oficial ni declara explícitamente qué recursos del tab **no** se usan. Ese es el
+hueco que hay que cerrar en otra sesión.
+
+No es un problema de mecánica ni de datos: DONKI ya está integrado y citado. Es
+un problema de **alcance y transparencia** para que un juez o un lector sepa, de
+un vistazo, que el proyecto conoce el tab oficial y que no está fingiendo usar
+OSDR, RadLab, Mars Trek o los recursos CSA.
+
+### Tarea pendiente para otra sesión
+
+- [ ] Añadir al panel **Data Sources** un bloque corto **“Official challenge
+      resources”** con el estado usado/no usado de esta tabla.
+- [ ] Marcar DONKI con un chip tipo **“OFFICIAL CHALLENGE RESOURCE”** (o texto
+      equivalente) para que se vea que sí se usa el tab oficial.
+- [ ] Incluir una nota de alcance: `api.nasa.gov` no se llama en runtime;
+      OSDR, RadLab, Mars Trek y CSA no se usan.
+- [ ] Si se añaden RadLab u OSDR en el futuro, etiquetarlos como **referencias
+      complementarias**, nunca como fuente lunar. RadLab mide ISS; OSDR es
+      biología/salud, no dosis lunar.
+- [ ] Revisar la página oficial antes de un envío: puede haber recursos nuevos.
+- [ ] No cambiar números, eventos ni mecánicas por esta tarea; es una nota de
+      procedencia y alcance. El audit y los tests deben seguir pasando.
+
+**Dónde tocar:** `src/ui/sources-view.js` (`sourcesMarkup`), y si se añaden
+fuentes nuevas, `src/data/sources.js` + `src/core/audit.js`.
+
+**Texto propuesto para la UI (inglés, como el resto de la interfaz):**
+
+```text
+Official challenge resources
+Used: DONKI — archived CME / SEP / GST events drive the radiation windows.
+Not used: NASA Open APIs (no runtime HTTP), OSDR, RadLab (ISS dosimetry),
+Mars Trek (this game is lunar), CSA resources.
+Additional NASA sources used: LRO CRaTER / LND, NASA BVAD, ECLSS / ISS OGS.
+```
+
+**Criterio de aceptación:** el panel muestra el bloque, DONKI aparece como
+recurso oficial usado, los no usados se listan sin ambigüedad, no se afirma que
+RadLab sea una fuente lunar y `npm run check` sigue en verde.
+
 ## Fuentes archivadas
 
 ### DONKI — CME 2024-05-08T22:24:00-CME-001
