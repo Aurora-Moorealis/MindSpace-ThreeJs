@@ -29,32 +29,20 @@ function makeMoonTexture(seed = 7) {
       const size = 1 + rand() * 3;
       ctx.fillRect(rand() * w, rand() * h, size, size);
     }
-    for (let i = 0; i < 24; i += 1) {
+    // Soft shaded regolith dimples (no harsh circle borders).
+    for (let i = 0; i < 28; i += 1) {
       const x = rand() * w;
       const y = rand() * h;
-      const r = 6 + rand() * 28;
-      ctx.strokeStyle = 'rgba(80,80,88,0.45)';
-      ctx.lineWidth = 2 + rand() * 2;
+      const r = 6 + rand() * 24;
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, 'rgba(64,64,72,0.28)');
+      grad.addColorStop(0.7, 'rgba(72,72,80,0.12)');
+      grad.addColorStop(1, 'rgba(72,72,80,0)');
+      ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(70,70,78,0.18)';
-      ctx.beginPath();
-      ctx.arc(x, y, r * 0.85, 0, Math.PI * 2);
       ctx.fill();
     }
-  });
-}
-
-function makeCraterTexture() {
-  return makeCanvasTexture(256, 256, (ctx, w, h) => {
-    const grad = ctx.createRadialGradient(w / 2, h / 2, 8, w / 2, h / 2, w / 2);
-    grad.addColorStop(0, 'rgba(50,50,58,0.55)');
-    grad.addColorStop(0.72, 'rgba(74,74,82,0.35)');
-    grad.addColorStop(0.86, 'rgba(176,176,182,0.55)');
-    grad.addColorStop(1, 'rgba(140,140,148,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
   });
 }
 
@@ -69,7 +57,6 @@ export class ExteriorBuilder {
     this.moonTexture.wrapS = THREE.RepeatWrapping;
     this.moonTexture.wrapT = THREE.RepeatWrapping;
     this.moonTexture.repeat.set(10, 10);
-    this.craterTexture = makeCraterTexture();
   }
 
   addCollider(cx, cz, w, d) {
@@ -82,9 +69,12 @@ export class ExteriorBuilder {
   }
 
   ground() {
-    const geo = new THREE.PlaneGeometry(220, 220, 64, 64);
+    const geo = new THREE.PlaneGeometry(220, 220, 110, 110);
     const position = geo.attributes.position;
     const heightAt = this.mapData.heightAt;
+    const colors = new Float32Array(position.count * 3);
+    const craters = this.mapData.craters ?? [];
+
     for (let i = 0; i < position.count; i += 1) {
       const localX = position.getX(i);
       const localY = position.getY(i);
@@ -92,7 +82,27 @@ export class ExteriorBuilder {
       const worldZ = 30 - localY;
       const bump = heightAt ? heightAt(worldX, worldZ) : 0;
       position.setZ(i, bump);
+
+      // Subtle ambient-occlusion vertex shading inside crater bowls and sunlit rims.
+      let shade = 1.0;
+      for (const c of craters) {
+        const r = c.size * 0.5;
+        const d = Math.hypot(worldX - c.x, worldZ - c.z);
+        if (d < r * 1.15) {
+          const t = d / r;
+          if (t < 0.78) {
+            shade = Math.min(shade, 0.72 + 0.2 * (t / 0.78));
+          } else {
+            const rimGlow = Math.sin(((t - 0.78) / 0.37) * Math.PI);
+            shade = Math.max(shade, 1.0 + rimGlow * 0.08);
+          }
+        }
+      }
+      colors[i * 3] = shade;
+      colors[i * 3 + 1] = shade;
+      colors[i * 3 + 2] = Math.min(1.08, shade * 1.01);
     }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
     const mat = new THREE.MeshStandardMaterial({
       map: this.moonTexture,
@@ -100,6 +110,7 @@ export class ExteriorBuilder {
       roughness: 1,
       metalness: 0,
       flatShading: true,
+      vertexColors: true,
     });
     const ground = new THREE.Mesh(geo, mat);
     ground.rotation.x = -Math.PI / 2;
@@ -122,19 +133,34 @@ export class ExteriorBuilder {
   }
 
   craters() {
-    const craterMat = new THREE.MeshBasicMaterial({
-      map: this.craterTexture,
-      transparent: true,
-      depthWrite: false,
-      toneMapped: false,
+    // Ground heightmap + vertex colors already sculpt each crater bowl and rim.
+    // Add subtle faceted 3D ejecta stones around larger crater rims so they read
+    // cleanly under directional sunlight without flat white decal borders.
+    const rand = seededRandom(this.mapData.seed ^ 0x9e3779b9);
+    const rimRockMat = material(this.mapData.biome?.rockColor ?? 0x7f7f86, {
+      roughness: 0.96,
+      flatShading: true,
     });
+    const heightAt = this.mapData.heightAt;
     for (const c of this.mapData.craters) {
-      const crater = new THREE.Mesh(new THREE.PlaneGeometry(c.size, c.size), craterMat);
-      crater.rotation.x = -Math.PI / 2;
-      crater.rotation.z = c.rotationZ;
-      crater.position.set(c.x, -0.09, c.z);
-      crater.renderOrder = 1;
-      this.group.add(crater);
+      if (c.size < 5.0) continue;
+      const radius = c.size * 0.48;
+      const ejectaCount = c.size > 8 ? 4 : 2;
+      for (let i = 0; i < ejectaCount; i += 1) {
+        const angle = c.rotationZ + (i / ejectaCount) * Math.PI * 2 + (rand() - 0.5) * 0.7;
+        const dist = radius * (0.9 + rand() * 0.24);
+        const rx = c.x + Math.cos(angle) * dist;
+        const rz = c.z + Math.sin(angle) * dist;
+        const ry = heightAt ? heightAt(rx, rz) : 0;
+        const stoneSize = 0.18 + rand() * 0.28;
+        const stone = new THREE.Mesh(new THREE.DodecahedronGeometry(stoneSize, 0), rimRockMat);
+        stone.position.set(rx, -0.1 + ry + stoneSize * 0.25, rz);
+        stone.rotation.set(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
+        stone.scale.y = 0.52;
+        stone.castShadow = true;
+        stone.receiveShadow = true;
+        this.group.add(stone);
+      }
     }
   }
 

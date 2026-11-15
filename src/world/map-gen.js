@@ -274,22 +274,31 @@ export function generateProceduralMap(seedInput) {
     };
   });
 
-  // 6. Craters (visual + terrain bowl relief).
+  // 6. Craters (non-overlapping 3D impact bowls + rims, clear of gameplay pads).
   const craters = [];
+  const craterCheckList = [...occupied];
   for (let i = 0; i < biome.craterCount; i += 1) {
-    const size = Number((3.2 + rand() * 9.5).toFixed(2));
-    const pos = pickClearPoint(rand, [{ x: 0, z: 18, r: 6.5 }], {
-      minX: -45,
-      maxX: 45,
-      minZ: 21,
-      maxZ: 60,
-      clearance: size * 0.35,
-      minAirlockDist: 8,
-    });
+    const size = Number((3.6 + rand() * 7.8).toFixed(2));
+    const radius = size * 0.5;
+    let placed = null;
+    for (let attempt = 0; attempt < 45; attempt += 1) {
+      const cx = Number((-43 + rand() * 86).toFixed(2));
+      const cz = Number((22 + rand() * 36).toFixed(2));
+      if (Math.hypot(cx, cz - 18) < 7.5 + radius) continue;
+      const overlaps = craterCheckList.some((item) => Math.hypot(cx - item.x, cz - item.z) < item.r + radius * 1.05);
+      if (!overlaps) {
+        placed = { x: cx, z: cz };
+        break;
+      }
+    }
+    if (!placed) continue;
+    craterCheckList.push({ x: placed.x, z: placed.z, r: radius * 1.05 });
     craters.push({
-      x: pos.x,
-      z: pos.z,
+      x: placed.x,
+      z: placed.z,
       size,
+      depth: Number((0.18 + Math.min(0.42, size * 0.042)).toFixed(3)),
+      rim: Number((0.06 + Math.min(0.16, size * 0.015)).toFixed(3)),
       rotationZ: Number((rand() * Math.PI * 2).toFixed(2)),
     });
   }
@@ -371,13 +380,19 @@ export function generateProceduralMap(seedInput) {
     const distFromCenter = Math.max(0, Math.hypot(worldX * 0.8, Math.max(0, worldZ - 32)) - 34);
     h += distFromCenter * 0.045;
 
-    // Subtle crater bowls.
+    // Impact crater bowls + gentle raised ejecta rims.
     for (const c of craters) {
-      const r = c.size * 0.48;
+      const r = c.size * 0.5;
       const d = Math.hypot(worldX - c.x, worldZ - c.z);
-      if (d < r) {
-        const norm = d / r;
-        h -= (1 - norm * norm) * Math.min(0.45, c.size * 0.04);
+      if (d < r * 1.2) {
+        const t = d / r;
+        if (t < 0.78) {
+          const u = t / 0.78;
+          h -= (1 - u * u) * (c.depth ?? 0.28);
+        } else {
+          const u = (t - 0.78) / 0.42;
+          h += Math.sin(u * Math.PI) * (c.rim ?? 0.1);
+        }
       }
     }
 

@@ -76,5 +76,14 @@ test('procedural map places all POIs, minerals, and NASA truck safely within bou
         assert.ok(dist >= 5.5, `${interactableSpots[i].id} and ${interactableSpots[j].id} overlap (${dist})`);
       }
     }
+    // Ensure no two craters overlap each other.
+    for (let i = 0; i < map.craters.length; i += 1) {
+      for (let j = i + 1; j < map.craters.length; j += 1) {
+        const c1 = map.craters[i];
+        const c2 = map.craters[j];
+        const dist = Math.hypot(c1.x - c2.x, c1.z - c2.z);
+        assert.ok(dist >= (c1.size + c2.size) * 0.45, `craters ${i} and ${j} overlap (${dist})`);
+      }
+    }
   }
 });
