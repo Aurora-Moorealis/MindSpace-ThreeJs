@@ -1293,6 +1293,7 @@ function refreshHud(cachedNearest = undefined) {
   app.interaction = nearest ? world.describeInteraction(nearest, { pickaxeEquipped }) : null;
   hud.update(sim, {
     speed: app.speed,
+    time: sim.state.tick + app.tickAccum / ECONOMY.time.realSecondsPerTick,
     presence: sim.presence,
     zone: { label: zoneLabel },
     interaction: app.scan ? null : app.interaction,

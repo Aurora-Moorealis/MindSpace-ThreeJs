@@ -371,8 +371,9 @@ export class HUD {
       refs.fill.classList.toggle('warning', value >= 25 && value < 45);
     }
 
+    const displayTick = Number.isFinite(ctx.time) ? ctx.time : state.tick;
     this.refs.sol.textContent = `SOL ${sim.sol}`;
-    this.refs.time.textContent = getClockLabel(state.tick);
+    this.refs.time.textContent = getClockLabel(displayTick);
     this.refs.phase.textContent = sim.isDay ? 'DAYLIGHT' : 'LUNAR NIGHT';
     this.refs.phase.classList.toggle('night', !sim.isDay);
     this.refs.tick.textContent = `T+${String(state.tick).padStart(3, '0')}H`;
