@@ -553,6 +553,10 @@ kbd {
   letter-spacing: 0.14em;
 }
 
+.clock-sub #hud-game-time {
+  color: var(--teal);
+}
+
 .clock-sub #hud-phase {
   color: var(--amber);
 }

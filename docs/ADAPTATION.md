@@ -193,6 +193,7 @@ etiquetan como tal en el banner y en el panel de fuentes.
 | Q5 opciones grises | Dos misiones "COMING SOON" en el selector. |
 | Q6 velocidad como hidden stat | El traje Mk II/servo del banco de reparación la toca (+15%) y el panel lo declara. |
 | Q7 look nocturno | Ciclo día/noche con luces interiores cálidas y paleta azulada en el exterior. |
+| Q8 horario | El reloj es **tiempo de juego comprimido**, no un calendario lunar real: la interfaz y esta documentación lo declaran. La compresión es intencionada para niños de 7 a 12 años (ver un día completo, entender causa-efecto y completar la misión en una sesión); no se simula el día lunar real de 29,53 días. |
 
 ## Qué falta si se quiere ampliar
 

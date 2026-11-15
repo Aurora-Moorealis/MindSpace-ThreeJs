@@ -78,8 +78,16 @@ export const STRINGS = {
     'A summary of the science mission, your contracts and the outpost clock. Use it when you need to remember why you are here.',
 
   'time.missionDay': 'MISSION DAY',
+  'time.gameTimeLabel': 'GAME TIME',
+  'time.modelNote':
+    '1 tick = 1 game hour = 60 real seconds at ×1. A mission day is 24 game hours: 12 daylight, 12 night. The mission lasts 300 game hours (12.5 mission days).',
   'time.compressionNote':
-    'A real lunar day lasts 29.53 Earth days. The outpost clock is compressed so a mission fits in one sitting.',
+    'Game time, not real lunar time. A real lunar day lasts 29.53 Earth days; we shorten it so junior astronauts can see a full day, watch their choices play out, and finish a mission in one sitting.',
+  'time.titleMeta':
+    'SOLO · GAME TIME (1 TICK = 1 GAME HOUR) · 4 RESOURCES · 3 SURVEY SITES · NASA DATA',
+  'time.sideHoursLabel': 'GAME HOURS',
+  'time.dataBadge': '1 s = 1 GAME MIN AT ×1 · PAUSE ANYTIME (P)',
+  'time.controlsNote': 'Game time runs live; pause before stepping away.',
 
   'dose.glossary': 'What is dose?',
   'dose.threshold30': '30 points (75 mSv): maximum health starts to drop',
@@ -441,7 +449,7 @@ export const STRINGS = {
     'Microgravity is not zero gravity: astronauts and everything around them fall together, so they float. Without weight pulling on the body, muscles and bones get weaker and fluid shifts towards the head.',
   'glossary.lunar_day.term': 'Lunar day',
   'glossary.lunar_day.definition':
-    'A lunar day, from sunrise to sunrise, lasts 29.53 Earth days: about 14 days of sunlight and 14 days of night. The outpost clock is compressed so one mission fits in one sitting.',
+    'Game time, not real lunar time. A real lunar day, sunrise to sunrise, lasts 29.53 Earth days: about 14 of sunlight and 14 of night. We shorten it so junior astronauts can see a full game day and mission.',
   'glossary.spe.term': 'Solar particle event (SPE)',
   'glossary.spe.definition':
     'Solar particle event: a burst of fast particles from the Sun, usually after a flare. It arrives with little warning, so the storm shelter is the countermeasure: get inside and lock it.',
