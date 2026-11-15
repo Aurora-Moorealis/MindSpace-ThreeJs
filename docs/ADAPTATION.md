@@ -161,7 +161,8 @@ etiquetan como tal en el banner y en el panel de fuentes.
 - Multijugador y varios astronautas.
 - Construcción/movimiento de edificios.
 - Save/persistencia.
-- Más arte 3D o modelos importados (GLTF) en lugar de primitivas.
+- Ampliar la biblioteca GLTF al resto de máquinas y utilería (hoy el rover, el
+  lander y la astronauta ya son modelos de Blender; el resto sigue procedural).
 - Empaquetado Electron/Tauri para Windows.
 - Traducción de la UI (hoy inglés, como pide la convención del proyecto
   original); el sistema de strings ya está centralizado.
