@@ -69,6 +69,8 @@ con `sim.tick()` y espera de más en las transiciones.
 - [x] La escalera de apagado respeta luces → hidroponía → reciclador → O₂.
 - [x] Reparar cuesta energía y 2 horas; la mejora de herramientas lo acelera.
 - [x] Las mejoras se instalan y cambian los números del panel.
+- [x] Toda mejora muestra su contrapartida antes de instalarla y la aplica al
+  simular (el beneficio sigue pesando más que el coste).
 - [x] El panel muestra la procedencia NASA/simulada.
 
 ### Radiación y eventos

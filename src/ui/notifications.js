@@ -141,7 +141,7 @@ export function describeNotification(notification, sim) {
       return {
         kind: 'good',
         title: 'Upgrade installed',
-        body: `${machineName(payload.machineId)} improved. Check its panel for the new numbers.`,
+        body: `${machineName(payload.machineId)} improved. Check its panel for the new numbers and the trade-off.`,
         icon: 'check',
         sound,
       };

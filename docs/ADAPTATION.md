@@ -92,6 +92,11 @@ del pipeline mantiene el orden. Se documenta como desviación consciente.
   salida la producción cae. Las averías de evento la ponen a 0 hasta reparar.
 - Reparar cuesta 4 kWh y 2 horas de juego; la mejora de herramientas lo baja a
   1 hora. Las mejoras cuestan energía y 2 horas.
+- Cada mejora aplica un beneficio y una contrapartida (`effect` y `drawback`):
+  más producción a cambio de más consumo, menos potencia a cambio de menos
+  caudal, velocidad a cambio de desgaste del traje, etc. El panel muestra ambos
+  números antes de instalarla y la auditoría de datos comprueba que el beneficio
+  mejora su stat y la contrapartida la empeora.
 
 ## Eventos y datos NASA
 

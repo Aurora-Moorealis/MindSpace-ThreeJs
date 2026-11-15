@@ -3577,6 +3577,24 @@ kbd {
   line-height: 1.3;
 }
 
+.upgrade-drawback {
+  margin-top: 4px;
+  color: var(--amber);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.upgrade-drawback span {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 1px 4px;
+  border: 1px solid rgba(255, 179, 71, 0.35);
+  background: var(--amber-soft);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
 .drawer-note {
   margin-top: 8px;
   color: var(--dim);

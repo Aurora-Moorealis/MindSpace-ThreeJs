@@ -5,16 +5,21 @@
  * data rows: the simulation reads power/inputs/outputs/upgrades from here and
  * the 3D layer only builds meshes from the same rows.
  *
+ * Every upgrade is a trade: `effect` is the benefit and `drawback` is the price
+ * paid for it. The pair must stay net positive, but neither side is free.
+ *
  * `real_data` is intentionally false for reliability and tuning numbers; the
  * sourceRefs point to NASA documents that anchor the physical rates. The UI
  * renders the SIMULATED badge next to those values.
  */
 
-const UPGRADE = (id, nameKey, descriptionKey, effect, cost, ticks = 2) => ({
+const UPGRADE = (id, nameKey, descriptionKey, effect, cost, drawback, ticks = 2) => ({
   id,
   nameKey,
   descriptionKey,
+  drawbackKey: `upgrade.${id}.drawback`,
   effect,
+  drawback,
   cost,
   ticks,
 });
@@ -44,14 +49,16 @@ export const MACHINES = {
         'upgrade.o2_efficiency.name',
         'upgrade.o2_efficiency.desc',
         { stat: 'o2_output', mult: 1.25 },
-        14
+        14,
+        { stat: 'water_input', mult: 1.15 }
       ),
       UPGRADE(
         'o2_water_loop',
         'upgrade.o2_water_loop.name',
         'upgrade.o2_water_loop.desc',
         { stat: 'water_input', mult: 0.75 },
-        12
+        12,
+        { stat: 'o2_output', mult: 0.94 }
       ),
     ],
   },
@@ -80,14 +87,16 @@ export const MACHINES = {
         'upgrade.water_recovery.name',
         'upgrade.water_recovery.desc',
         { stat: 'water_output', mult: 1.2 },
-        14
+        14,
+        { stat: 'power_draw', mult: 1.12 }
       ),
       UPGRADE(
         'water_power',
         'upgrade.water_power.name',
         'upgrade.water_power.desc',
         { stat: 'power_draw', mult: 0.8 },
-        12
+        12,
+        { stat: 'water_output', mult: 0.9 }
       ),
     ],
   },
@@ -116,14 +125,16 @@ export const MACHINES = {
         'upgrade.hydro_yield.name',
         'upgrade.hydro_yield.desc',
         { stat: 'food_output', mult: 1.25 },
-        14
+        14,
+        { stat: 'hydro_power', mult: 1.15 }
       ),
       UPGRADE(
         'hydro_led',
         'upgrade.hydro_led.name',
         'upgrade.hydro_led.desc',
         { stat: 'hydro_power', mult: 0.8 },
-        12
+        12,
+        { stat: 'food_output', mult: 0.92 }
       ),
     ],
   },
@@ -152,14 +163,16 @@ export const MACHINES = {
         'upgrade.solar_tracking.name',
         'upgrade.solar_tracking.desc',
         { stat: 'solar_output', mult: 1.2 },
-        16
+        16,
+        { stat: 'solar_wear', mult: 1.2 }
       ),
       UPGRADE(
         'solar_coating',
         'upgrade.solar_coating.name',
         'upgrade.solar_coating.desc',
         { stat: 'dust_rate', mult: 0.55 },
-        14
+        14,
+        { stat: 'solar_output', mult: 0.92 }
       ),
     ],
   },
@@ -187,14 +200,16 @@ export const MACHINES = {
         'upgrade.battery_cells.name',
         'upgrade.battery_cells.desc',
         { stat: 'battery_capacity', add: 50 },
-        16
+        16,
+        { stat: 'machine_wear', mult: 1.06 }
       ),
       UPGRADE(
         'battery_reserve',
         'upgrade.battery_reserve.name',
         'upgrade.battery_reserve.desc',
         { stat: 'battery_capacity', add: 30 },
-        12
+        12,
+        { stat: 'power_draw', mult: 1.04 }
       ),
     ],
   },
@@ -222,14 +237,16 @@ export const MACHINES = {
         'upgrade.dist_efficiency.name',
         'upgrade.dist_efficiency.desc',
         { stat: 'power_draw', mult: 0.9 },
-        14
+        14,
+        { stat: 'machine_wear', mult: 1.1 }
       ),
       UPGRADE(
         'dist_cooling',
         'upgrade.dist_cooling.name',
         'upgrade.dist_cooling.desc',
         { stat: 'machine_wear', mult: 0.8 },
-        12
+        12,
+        { stat: 'power_draw', mult: 1.05 }
       ),
     ],
   },
@@ -257,21 +274,24 @@ export const MACHINES = {
         'upgrade.bench_repair_speed.name',
         'upgrade.bench_repair_speed.desc',
         { stat: 'repair_time', mult: 0.5 },
-        12
+        12,
+        { stat: 'power_draw', mult: 1.05 }
       ),
       UPGRADE(
         'suit_servo',
         'upgrade.suit_servo.name',
         'upgrade.suit_servo.desc',
         { stat: 'movement_speed', mult: 1.15 },
-        12
+        12,
+        { stat: 'suit_decay', mult: 1.2 }
       ),
       UPGRADE(
         'suit_mk2',
         'upgrade.suit_mk2.name',
         'upgrade.suit_mk2.desc',
         { stat: 'suit_shield', mult: 0.55 },
-        16
+        16,
+        { stat: 'movement_speed', mult: 0.9 }
       ),
     ],
   },
@@ -299,14 +319,16 @@ export const MACHINES = {
         'upgrade.comms_forecast.name',
         'upgrade.comms_forecast.desc',
         { stat: 'forecast_depth', add: 2 },
-        12
+        12,
+        { stat: 'power_draw', mult: 1.04 }
       ),
       UPGRADE(
         'comms_analysis',
         'upgrade.comms_analysis.name',
         'upgrade.comms_analysis.desc',
         { stat: 'submission_reward', mult: 1.5 },
-        14
+        14,
+        { stat: 'power_draw', mult: 1.06 }
       ),
     ],
   },
@@ -334,14 +356,16 @@ export const MACHINES = {
         'upgrade.shelter_shield.name',
         'upgrade.shelter_shield.desc',
         { stat: 'shelter_shield', mult: 0.5 },
-        14
+        14,
+        { stat: 'shelter_base', mult: 1.08 }
       ),
       UPGRADE(
         'shelter_base',
         'upgrade.shelter_base.name',
         'upgrade.shelter_base.desc',
         { stat: 'shelter_base', mult: 0.7 },
-        16
+        16,
+        { stat: 'shelter_shield', mult: 1.1 }
       ),
     ],
   },
